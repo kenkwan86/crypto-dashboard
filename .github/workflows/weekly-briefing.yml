@@ -22,10 +22,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt anthropic
+      - run: pip install -r requirements.txt
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
       - name: Generate briefing
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: python -m briefing.generate
       - name: Commit report
         run: |

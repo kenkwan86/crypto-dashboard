@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from analytics.data_access import load_daily_closes, load_funding, load_open_interest
+from analytics.data_access import (load_daily_closes, load_funding,
+                                   load_open_interest, load_open_interest_binance)
 
 WINDOWS_DAYS = {"z30": 30, "z90": 90, "z365": 365}
 MIN_PERIODS_FRACTION = 0.5
@@ -38,9 +39,12 @@ def funding_zscores() -> dict[str, pd.DataFrame]:
 
 
 def oi_zscores() -> dict[str, pd.DataFrame]:
-    """Daily OI panel, 7d %-change, and z-scores of the 7d change."""
+    """Daily OI panels: total level for display, but 7d change and its z-scores
+    from the continuous Binance-only series (the total mixes single-exchange
+    backfill with multi-exchange live rows, faking jumps at the seam)."""
     panel = daily_panel(load_open_interest(), "oi_usd")
-    change_7d = panel.pct_change(7)
+    binance_panel = daily_panel(load_open_interest_binance(), "oi_usd")
+    change_7d = binance_panel.pct_change(7)
     return {"value": panel, "change_7d": change_7d} | {
         name: change_7d.apply(lambda s: rolling_z(s, days)) for name, days in WINDOWS_DAYS.items()
     }

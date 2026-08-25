@@ -13,7 +13,7 @@ Streamlit dashboard, and Claude-generated market briefings. Free data sources on
 - `python -m collectors.backfill.deribit` - DVOL history
 - `python -m analytics.zscores` / `python -m analytics.regime` / `python -m analytics.options_metrics`
 - `streamlit run dashboard/app.py` - dashboard at localhost:8501
-- `python -m briefing.generate` - Claude market briefing (needs ANTHROPIC_API_KEY)
+- `python -m briefing.generate` - Claude market briefing via headless Claude Code (no API key locally)
 
 ## Data schemas (parquet, `data/<table>/<year>.parquet`, all ts UTC)
 

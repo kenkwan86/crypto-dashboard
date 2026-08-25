@@ -48,6 +48,18 @@ def load_open_interest() -> pd.DataFrame:
     """)
 
 
+def load_open_interest_binance() -> pd.DataFrame:
+    """Binance-only OI: one continuous series across backfill and live rows.
+    Use this for change/z-score computations - the total series mixes
+    single-exchange history with multi-exchange live data."""
+    return query(f"""
+        SELECT symbol, ts, oi_usd
+        FROM read_parquet('{table_path('open_interest')}')
+        WHERE exchange = 'binance'
+        ORDER BY symbol, ts
+    """)
+
+
 def load_daily_closes() -> pd.DataFrame:
     return query(f"""
         SELECT symbol, date_trunc('day', ts) AS ts, last(close ORDER BY ts) AS close,
@@ -58,7 +70,13 @@ def load_daily_closes() -> pd.DataFrame:
     """)
 
 
+def table_exists(table: str) -> bool:
+    return any((DATA_DIR / table).glob("*.parquet"))
+
+
 def load_liquidations() -> pd.DataFrame:
+    if not table_exists("liquidations"):
+        return pd.DataFrame(columns=["symbol", "ts", "long_usd", "short_usd"])
     return query(f"""
         SELECT symbol, ts, long_usd, short_usd
         FROM read_parquet('{table_path('liquidations')}')

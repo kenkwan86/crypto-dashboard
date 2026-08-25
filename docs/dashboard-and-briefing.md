@@ -11,10 +11,12 @@ or manually; reports land in briefing/reports/.
 ## Briefing
 
 briefing/generate.py builds a compact JSON context (regime history, cross-
-sectional table, DVOL percentile, term structure, 14d liquidations) and sends it
-to the Claude API (model claude-sonnet-5, system prompt in the file). Missing
-inputs are omitted from the context; the prompt tells the model to state gaps.
-Needs ANTHROPIC_API_KEY (repo secret ANTHROPIC_API_KEY for the workflow).
+sectional table, DVOL percentile, term structure, 14d liquidations) and pipes
+it to headless Claude Code (`claude -p --model sonnet`), so it runs on the
+user's Claude subscription - no API key. Missing inputs are omitted from the
+context; the prompt tells the model to state gaps. Locally it uses the Claude
+Code login; the workflow needs the CLAUDE_CODE_OAUTH_TOKEN repo secret
+(generate once with `claude setup-token`).
 
 ## Conventions
 

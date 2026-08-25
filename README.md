@@ -12,7 +12,8 @@ stack, built entirely on free data sources.
   screener, composite regime index, options term structure and 25-delta skew.
 - **Dashboard**: Streamlit (`streamlit run dashboard/app.py`).
 - **LLM layer**: `CLAUDE.md` documents schemas for ad hoc analysis with Claude
-  Code; `python -m briefing.generate` writes a Claude market briefing
+  Code; `python -m briefing.generate` writes a Claude market briefing via
+  headless Claude Code (`claude -p`) - uses the Claude subscription, no API key
   (weekly via Actions).
 
 ## Setup
@@ -24,8 +25,10 @@ python -m collectors.hourly --daily
 streamlit run dashboard/app.py
 ```
 
-Secrets (GitHub Actions repo secrets, or local env vars):
+Secrets (GitHub Actions repo secrets; locally copy `.env.example` to `.env`):
 - `COINALYZE_API_KEY` - free at https://coinalyze.net/account/api (liquidations, aggregated OI)
-- `ANTHROPIC_API_KEY` - for briefings only
+- `CLAUDE_CODE_OAUTH_TOKEN` - for the weekly briefing workflow only; generate
+  once from your Claude subscription with `claude setup-token`. Local briefings
+  just use your Claude Code login.
 
 See `CLAUDE.md` for schemas and commands, `docs/` for system docs.
