@@ -18,7 +18,14 @@ MIN_EXPIRY_DAYS = 2  # ignore expiries closer than this: IV is noise there
 
 
 def load_chain() -> pd.DataFrame:
-    df = query(f"SELECT * FROM read_parquet('{table_path('options_chain')}')")
+    df = query(f"""
+        SELECT instrument, ts, max(currency) AS currency, max(expiry) AS expiry,
+               max(strike) AS strike, max(option_type) AS option_type,
+               max(mark_iv) AS mark_iv, max(open_interest) AS open_interest,
+               max(underlying_price) AS underlying_price, max(volume) AS volume
+        FROM read_parquet('{table_path('options_chain')}')
+        GROUP BY instrument, ts
+    """)
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
     df["expiry_ts"] = pd.to_datetime(df["expiry"], format="%d%b%y", utc=True) + pd.Timedelta(hours=8)
     df["tau_years"] = (df["expiry_ts"] - df["ts"]).dt.total_seconds() / (365 * 24 * 3600)

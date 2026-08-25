@@ -90,29 +90,43 @@ def collect_open_interest(exchanges: dict[str, ccxt.Exchange], universe: pd.Data
     return append_parquet(pd.DataFrame(rows), "open_interest")
 
 
-def collect_liquidations(universe: pd.DataFrame, now: pd.Timestamp) -> int:
+def collect_coinalyze(universe: pd.DataFrame, now: pd.Timestamp) -> tuple[int, int]:
+    """Aggregated liquidations and OI for the last 24h from Coinalyze.
+    OI is stored as exchange='coinalyze_agg' so cloud runs (which cannot reach
+    Binance/Bybit) still record a full-market OI series."""
     if not env("COINALYZE_API_KEY"):
-        print("  liquidations: COINALYZE_API_KEY not set, skipping")
-        return 0
+        print("  coinalyze: COINALYZE_API_KEY not set, skipping")
+        return 0, 0
     from collectors.coinalyze_client import CoinalyzeClient
 
     client = CoinalyzeClient()
     symbol_to_base = client.perp_symbols_for_bases(set(universe["base"]))
     end_s = int(now.timestamp())
     start_s = end_s - 24 * 3600
-    data = client.liquidation_history(list(symbol_to_base), "1hour", start_s, end_s)
-    rows = []
-    for market in data:
+
+    liq_rows = []
+    for market in client.liquidation_history(list(symbol_to_base), "1hour", start_s, end_s):
         base = symbol_to_base.get(market["symbol"])
-        if not base:
-            continue
         for point in market.get("history", []):
-            rows.append({"symbol": base, "ts": pd.Timestamp(point["t"], unit="s", tz="UTC"),
-                         "long_usd": point.get("l", 0.0), "short_usd": point.get("s", 0.0)})
-    if not rows:
-        return 0
-    df = pd.DataFrame(rows).groupby(["symbol", "ts"], as_index=False)[["long_usd", "short_usd"]].sum()
-    return append_parquet(df, "liquidations")
+            liq_rows.append({"symbol": base, "ts": pd.Timestamp(point["t"], unit="s", tz="UTC"),
+                             "long_usd": point.get("l", 0.0), "short_usd": point.get("s", 0.0)})
+    liq_added = 0
+    if liq_rows:
+        df = pd.DataFrame(liq_rows).groupby(["symbol", "ts"], as_index=False)[["long_usd", "short_usd"]].sum()
+        liq_added = append_parquet(df, "liquidations")
+
+    oi_rows = []
+    for market in client.open_interest_history(list(symbol_to_base), "1hour", start_s, end_s):
+        base = symbol_to_base.get(market["symbol"])
+        for point in market.get("history", []):
+            oi_rows.append({"symbol": base, "ts": pd.Timestamp(point["t"], unit="s", tz="UTC"),
+                            "oi_usd": point.get("c", 0.0)})
+    oi_added = 0
+    if oi_rows:
+        df = pd.DataFrame(oi_rows).groupby(["symbol", "ts"], as_index=False)[["oi_usd"]].sum()
+        df["exchange"] = "coinalyze_agg"
+        oi_added = append_parquet(df, "open_interest")
+    return liq_added, oi_added
 
 
 def collect_options(now: pd.Timestamp) -> tuple[int, int]:
@@ -151,23 +165,41 @@ def main() -> None:
     start = time.monotonic()
     now = pd.Timestamp.now(tz="UTC").floor("h")
     universe = load_universe()
-    exchanges = {
-        "binance": ccxt.binanceusdm({"enableRateLimit": True}),
-        "bybit": ccxt.bybit({"enableRateLimit": True}),
-        "hyperliquid": ccxt.hyperliquid({"enableRateLimit": True,
-                                         "options": {"fetchMarkets": {"types": ["swap"]}}}),
+    # Binance/Bybit/Deribit geo-block US IPs (GitHub-hosted runners are US-based),
+    # so every source is optional: collect what this network can reach.
+    candidates = {
+        "binance": lambda: ccxt.binanceusdm({"enableRateLimit": True}),
+        "bybit": lambda: ccxt.bybit({"enableRateLimit": True}),
+        "hyperliquid": lambda: ccxt.hyperliquid({"enableRateLimit": True,
+                                                 "options": {"fetchMarkets": {"types": ["swap"]}}}),
     }
-    for exchange in exchanges.values():
-        exchange.load_markets()
+    exchanges = {}
+    for name, factory in candidates.items():
+        try:
+            exchange = factory()
+            exchange.load_markets()
+            exchanges[name] = exchange
+        except Exception as error:
+            print(f"  exchange {name} unavailable, skipping: {str(error)[:160]}")
 
     counts = {
-        "ohlcv": collect_ohlcv(exchanges["binance"], universe),
         "funding": collect_funding(exchanges, universe, now),
         "open_interest": collect_open_interest(exchanges, universe, now),
-        "liquidations": collect_liquidations(universe, now),
     }
+    try:
+        counts["liquidations"], counts["oi_coinalyze"] = collect_coinalyze(universe, now)
+    except Exception as error:
+        print(f"  coinalyze failed: {str(error)[:160]}")
+        counts["liquidations"] = counts["oi_coinalyze"] = 0
+    if "binance" in exchanges:
+        counts["ohlcv"] = collect_ohlcv(exchanges["binance"], universe)
+    else:
+        print("  ohlcv: binance unavailable, skipping")
     if now.hour == 0 or "--daily" in sys.argv:
-        counts["options_dvol"], counts["options_chain"] = collect_options(now)
+        try:
+            counts["options_dvol"], counts["options_chain"] = collect_options(now)
+        except Exception as error:
+            print(f"  options: deribit unavailable, skipping: {str(error)[:160]}")
 
     elapsed = time.monotonic() - start
     print(f"done in {elapsed:.0f}s at {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC")

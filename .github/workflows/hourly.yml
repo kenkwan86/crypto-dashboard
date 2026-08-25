@@ -26,6 +26,7 @@ jobs:
       - name: Collect
         env:
           COINALYZE_API_KEY: ${{ secrets.COINALYZE_API_KEY }}
+          DATA_WRITER_TAG: cloud
         run: python -m collectors.hourly
       - name: Commit data
         run: |

@@ -26,28 +26,41 @@ class CoinalyzeClient:
         self._last_request = 0.0
 
     def _get(self, path: str, params: dict | None = None):
-        wait = REQUEST_INTERVAL_S - (time.monotonic() - self._last_request)
-        if wait > 0:
-            time.sleep(wait)
-        response = self._client.get(f"{BASE_URL}{path}", params=params or {})
-        self._last_request = time.monotonic()
-        response.raise_for_status()
-        return response.json()
+        for attempt in range(6):
+            wait = REQUEST_INTERVAL_S - (time.monotonic() - self._last_request)
+            if wait > 0:
+                time.sleep(wait)
+            response = self._client.get(f"{BASE_URL}{path}", params=params or {})
+            self._last_request = time.monotonic()
+            if response.status_code == 429:
+                retry_after = float(response.headers.get("Retry-After") or 10 * (attempt + 1))
+                time.sleep(min(retry_after, 70))
+                continue
+            response.raise_for_status()
+            return response.json()
+        raise RuntimeError(f"coinalyze still rate-limited after retries: {path}")
 
     def future_markets(self) -> list[dict]:
         return self._get("/future-markets")
 
-    def perp_symbols_for_bases(self, bases: set[str]) -> dict[str, str]:
-        """Map coinalyze market symbol -> base asset, for perps of the given bases."""
+    def perp_symbols_for_bases(self, bases: set[str], prefer_aggregated: bool = True) -> dict[str, str]:
+        """Map coinalyze market symbol -> base asset, for perps of the given bases.
+
+        With prefer_aggregated, bases that have '.A' (cross-exchange aggregated)
+        symbols use only those - far fewer symbols, so far fewer API calls."""
         markets = self.future_markets()
-        out = {}
+        all_symbols: dict[str, str] = {}
         for market in markets:
             if not market.get("is_perpetual"):
                 continue
             base = market.get("base_asset")
             if base in bases and market.get("quote_asset") in {"USDT", "USD", "USDC"}:
-                out[market["symbol"]] = base
-        return out
+                all_symbols[market["symbol"]] = base
+        if not prefer_aggregated:
+            return all_symbols
+        aggregated_bases = {b for s, b in all_symbols.items() if s.endswith(".A")}
+        return {s: b for s, b in all_symbols.items()
+                if (s.endswith(".A")) or (b not in aggregated_bases)}
 
     def liquidation_history(self, symbols: list[str], interval: str, start_s: int, end_s: int) -> list[dict]:
         """Returns [{symbol, history: [{t, l, s}]}] with USD-converted long/short totals."""

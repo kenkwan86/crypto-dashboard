@@ -38,15 +38,22 @@ TABLE_KEYS = {
 
 
 def append_parquet(df: pd.DataFrame, table: str) -> int:
-    """Append rows to data/<table>/<year>.parquet with dedupe. Returns rows added."""
+    """Append rows to data/<table>/<year>-<tag>.parquet with dedupe (within the
+    tag file). Returns rows added.
+
+    The tag (DATA_WRITER_TAG, default "local"; the cloud workflow sets "cloud")
+    keeps each writer in its own files so the GitHub Actions collector and the
+    PC collector never git-conflict on the same parquet. Loaders read
+    data/<table>/*.parquet and dedupe across files."""
     if df.empty:
         return 0
+    tag = env("DATA_WRITER_TAG", "local")
     keys = TABLE_KEYS[table]
     df = df.copy()
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
     added = 0
     for year, chunk in df.groupby(df["ts"].dt.year):
-        path = DATA_DIR / table / f"{year}.parquet"
+        path = DATA_DIR / table / f"{year}-{tag}.parquet"
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             existing = pd.read_parquet(path)
