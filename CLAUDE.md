@@ -46,6 +46,8 @@ resolves the live-vs-backfill source overlap correctly.
 
 ## Gotchas
 
+- Binance/Bybit/Deribit geo-block US IPs; GitHub-hosted runners are US-based. The cloud workflow only collects Coinalyze aggregates + Hyperliquid; the PC Task Scheduler job ("CryptoDashboardHourly", tools/run_hourly.ps1) collects the full set. Writers append to `<year>-<tag>.parquet` (cloud vs local) to avoid git conflicts; loaders dedupe across files - never read the parquet directly without deduping on the table keys.
+
 - ccxt hyperliquid spot-market parsing is broken; always construct it with `{"options": {"fetchMarkets": {"types": ["swap"]}}}`.
 - Binance/Bybit `fetch_open_interest` returns contracts only; convert to USD with the last price (done in `collectors/hourly.py`).
 - Binance lists tokenized stocks/commodities as perps; the universe filter keeps only `underlyingType == "COIN"`.
