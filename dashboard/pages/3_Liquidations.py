@@ -18,6 +18,9 @@ if liquidations.empty:
     st.stop()
 
 liquidations["ts"] = pd.to_datetime(liquidations["ts"], utc=True)
+cutoff = shared.lookback_cutoff()
+if cutoff is not None:
+    liquidations = liquidations[liquidations["ts"] >= cutoff]
 daily = (liquidations.assign(day=liquidations["ts"].dt.floor("D"))
          .groupby("day")[["long_usd", "short_usd"]].sum())
 

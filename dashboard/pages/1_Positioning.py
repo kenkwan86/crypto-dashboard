@@ -15,7 +15,13 @@ funding = shared.funding_panels()
 oi = shared.oi_panels()
 
 symbols = sorted(funding["value"].columns)
-symbol = st.selectbox("Coin", symbols, index=symbols.index("BTC") if "BTC" in symbols else 0)
+col_coin, col_lookback = st.columns([4, 1])
+with col_coin:
+    symbol = st.selectbox("Coin", symbols, index=symbols.index("BTC") if "BTC" in symbols else 0)
+with col_lookback:
+    cutoff = shared.lookback_cutoff()
+funding = {name: shared.clip_index(panel, cutoff) for name, panel in funding.items()}
+oi = {name: shared.clip_index(panel, cutoff) for name, panel in oi.items()}
 
 col1, col2 = st.columns(2)
 

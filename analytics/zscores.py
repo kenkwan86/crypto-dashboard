@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from analytics.data_access import (load_daily_closes, load_funding,
-                                   load_open_interest, load_open_interest_binance)
+from analytics.data_access import (load_daily_closes, load_funding, load_open_interest,
+                                   load_open_interest_binance, load_open_interest_coinalyze)
 
 WINDOWS_DAYS = {"z30": 30, "z90": 90, "z365": 365}
 MIN_PERIODS_FRACTION = 0.5
@@ -40,11 +40,21 @@ def funding_zscores() -> dict[str, pd.DataFrame]:
 
 def oi_zscores() -> dict[str, pd.DataFrame]:
     """Daily OI panels: total level for display, but 7d change and its z-scores
-    from the continuous Binance-only series (the total mixes single-exchange
-    backfill with multi-exchange live rows, faking jumps at the seam)."""
+    from a single-source continuous series per coin (mixing sources across time
+    fakes jumps at the seams). Binance history where it is deep enough (the
+    backfilled top 10), Coinalyze aggregated otherwise."""
     panel = daily_panel(load_open_interest(), "oi_usd")
     binance_panel = daily_panel(load_open_interest_binance(), "oi_usd")
-    change_7d = binance_panel.pct_change(7)
+    coinalyze_panel = daily_panel(load_open_interest_coinalyze(), "oi_usd")
+    series = {}
+    for symbol in panel.columns:
+        binance = binance_panel.get(symbol)
+        if binance is not None and binance.notna().sum() >= 90:
+            series[symbol] = binance
+        elif symbol in coinalyze_panel:
+            series[symbol] = coinalyze_panel[symbol]
+    continuous = pd.DataFrame(series)
+    change_7d = continuous.pct_change(7)
     return {"value": panel, "change_7d": change_7d} | {
         name: change_7d.apply(lambda s: rolling_z(s, days)) for name, days in WINDOWS_DAYS.items()
     }

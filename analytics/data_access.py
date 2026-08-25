@@ -81,6 +81,17 @@ def load_open_interest_binance() -> pd.DataFrame:
     """)
 
 
+def load_open_interest_coinalyze() -> pd.DataFrame:
+    """Coinalyze aggregated OI only - the fallback continuous series for coins
+    without deep Binance OI history."""
+    return query(f"""
+        SELECT symbol, ts, max(oi_usd) AS oi_usd
+        FROM read_parquet('{table_path('open_interest')}')
+        WHERE exchange = 'coinalyze_agg'
+        GROUP BY symbol, ts ORDER BY symbol, ts
+    """)
+
+
 def load_daily_closes() -> pd.DataFrame:
     return query(f"""
         WITH deduped AS (

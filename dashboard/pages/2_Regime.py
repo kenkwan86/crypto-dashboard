@@ -15,6 +15,7 @@ regime = shared.regime_history()
 if regime.empty:
     st.info("No regime history yet - collect more data first.")
     st.stop()
+regime = shared.clip_index(regime, shared.lookback_cutoff())
 
 figure = go.Figure()
 figure.add_scatter(x=regime.index, y=regime["regime"], name="regime",

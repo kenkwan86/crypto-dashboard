@@ -13,8 +13,11 @@ st.set_page_config(page_title="Options", layout="wide")
 st.title("BTC / ETH options - volatility and skew")
 
 dvol = shared.dvol()
+cutoff = shared.lookback_cutoff()
 if not dvol.empty:
     dvol["ts"] = pd.to_datetime(dvol["ts"], utc=True)
+    if cutoff is not None:
+        dvol = dvol[dvol["ts"] >= cutoff]
     figure = go.Figure()
     for currency, color in [("BTC", "#f59e0b"), ("ETH", "#3b82f6")]:
         series = dvol[dvol["currency"] == currency]
