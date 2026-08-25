@@ -41,7 +41,7 @@ resolves the live-vs-backfill source overlap correctly.
 
 - z-scores: value vs its own trailing window (30/90/365 days), computed in `analytics/zscores.py`.
 - OI z is the z-score of the **7-day % change** in OI, not the level.
-- Regime score (`analytics/regime.py`): mean of median funding z90, median OI z90, median momentum z90, breadth score, and BTC DVOL 1y percentile score; each clipped to [-3,3]. Positive = hot/crowded, negative = washed out.
+- Regime score (`analytics/regime.py`): mean of median funding z90, funding-level 1y percentile score, median OI z90, median momentum z90, breadth score, and BTC DVOL 1y percentile score; each clipped to [-3,3]. Positive = hot/crowded, negative = washed out.
 - RR25 (`analytics/options_metrics.py`): 25-delta call IV minus 25-delta put IV, deltas computed via Black-Scholes from mark IV (Deribit book summary has no greeks).
 
 ## Gotchas

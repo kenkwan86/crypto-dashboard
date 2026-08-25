@@ -25,7 +25,7 @@ figure.update_layout(title="Regime score (+hot / -washed out)", height=400, temp
 st.plotly_chart(figure, use_container_width=True)
 
 figure = go.Figure()
-for component, color in [("funding_z", "#f59e0b"), ("oi_z", "#3b82f6"),
+for component, color in [("funding_z", "#f59e0b"), ("funding_pct", "#eab308"), ("oi_z", "#3b82f6"),
                          ("momentum_z", "#a855f7"), ("breadth", "#22c55e"), ("dvol_pct", "#ef4444")]:
     figure.add_scatter(x=regime.index, y=regime[component], name=component, line={"color": color, "width": 1})
 figure.update_layout(title="Components", height=400, template="plotly_dark")
