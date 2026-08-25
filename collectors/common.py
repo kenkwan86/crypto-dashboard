@@ -48,7 +48,10 @@ def append_parquet(df: pd.DataFrame, table: str) -> int:
             merged = chunk.drop_duplicates(subset=keys, keep="last")
             added += len(merged)
         merged = merged.sort_values("ts")
-        merged.to_parquet(path, index=False)
+        # Write via temp file + replace so readers never see a half-written file.
+        temp_path = path.with_suffix(".parquet.tmp")
+        merged.to_parquet(temp_path, index=False)
+        os.replace(temp_path, path)
     return added
 
 
