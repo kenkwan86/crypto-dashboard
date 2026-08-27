@@ -30,8 +30,12 @@ def build_universe() -> pd.DataFrame:
     for symbol, market in binance_markets.items():
         if not market.get("swap") or market.get("quote") != "USDT" or not market.get("active"):
             continue
+        info = market.get("info") or {}
         # Binance also lists tokenized stocks/commodities as perps; keep crypto only.
-        if (market.get("info") or {}).get("underlyingType") != "COIN":
+        if info.get("underlyingType") != "COIN":
+            continue
+        # Delisting perps go SETTLING/CLOSED and reject fetch_open_interest (-4108).
+        if info.get("status") != "TRADING":
             continue
         base = market["base"]
         if base in EXCLUDED_BASES:
