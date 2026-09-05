@@ -12,6 +12,8 @@ from dashboard import shared
 st.set_page_config(page_title="Options", layout="wide")
 st.title("BTC / ETH options - volatility and skew")
 
+shared.render_freshness()
+
 dvol = shared.dvol()
 cutoff = shared.lookback_cutoff()
 if not dvol.empty:

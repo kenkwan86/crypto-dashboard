@@ -15,6 +15,8 @@ st.set_page_config(page_title="Crypto Dashboard", layout="wide", page_icon="📊
 
 st.title("Crypto Market Dashboard")
 
+shared.render_freshness()
+
 regime = shared.regime_history()
 table = shared.cross_sectional_table()
 

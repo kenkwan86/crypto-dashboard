@@ -31,9 +31,10 @@ def main() -> None:
         base = symbol_to_base.get(market["symbol"])
         for point in market.get("history", []):
             rows.append({"symbol": base, "ts": pd.Timestamp(point["t"], unit="s", tz="UTC"),
-                         "long_usd": point.get("l", 0.0), "short_usd": point.get("s", 0.0)})
+                         "long_usd": point.get("l", 0.0), "short_usd": point.get("s", 0.0),
+                         "interval": "1d"})
     if rows:
-        df = pd.DataFrame(rows).groupby(["symbol", "ts"], as_index=False)[["long_usd", "short_usd"]].sum()
+        df = pd.DataFrame(rows).groupby(["symbol", "ts", "interval"], as_index=False)[["long_usd", "short_usd"]].sum()
         print(f"liquidations: +{append_parquet(df, 'liquidations')} rows")
 
     oi = client.open_interest_history(symbols, "daily", start_s, end_s)

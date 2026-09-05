@@ -15,18 +15,21 @@ if table.empty:
     st.info("No data yet.")
     st.stop()
 
+shared.render_freshness()
+
 display = table.copy()
 display["funding_apr_%"] = display["funding_rate"] * 3 * 365 * 100
 display["oi_usd_M"] = display["oi_usd"] / 1e6
 display["oi_change_7d_%"] = display["oi_change_7d"] * 100
 display["return_30d_%"] = display["return_30d"] * 100
-columns = ["oi_usd_M", "funding_apr_%", "funding_z90", "oi_change_7d_%", "oi_z90",
+columns = ["oi_usd_M", "oi_src", "funding_apr_%", "funding_z90", "oi_change_7d_%", "oi_z90",
            "return_30d_%", "momentum_z90"]
+numeric_columns = [c for c in columns if c != "oi_src"]
 
 st.dataframe(
     display[columns].style
     .background_gradient(subset=["funding_z90", "oi_z90", "momentum_z90"], cmap="RdYlGn_r", vmin=-3, vmax=3)
-    .format("{:.2f}"),
+    .format("{:.2f}", subset=numeric_columns),
     use_container_width=True, height=800,
 )
-st.caption("z90 = z-score vs trailing 90 days. funding_apr assumes 8h funding, 3x daily.")
+st.caption("z90 = z-score vs trailing 90 days. funding_apr annualises the per-8h rate (funding is normalised to a per-8h rate before annualising, 3x daily).")

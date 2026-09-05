@@ -29,21 +29,42 @@ regime briefing from positioning data. Be specific and numbers-driven. Structure
 3. Volatility - DVOL level/percentile, term structure shape, skew, and what they price in.
 4. Liquidation picture - recent flush activity or its absence.
 5. Watchlist - 3-5 concrete things that would change the assessment (levels, z-score reversals).
-Plain English, no hedging boilerplate. State data gaps plainly if inputs are missing."""
+Plain English, no hedging boilerplate. State data gaps plainly if inputs are missing.
+State the age of each input you cite (see data_as_of), and refuse to draw any
+conclusion from a table whose data is older than 24 hours - say so instead."""
+
+
+UNITS = {
+    "funding": "per-8h rate (rate * 3 * 365 annualises it); each venue's stored "
+               "interval is normalised to a per-8h rate before averaging",
+    "open_interest": "USD notional; one single source per symbol (binance or "
+                     "coinalyze_agg, see cross_section.oi_src) - never a mix across time",
+    "liquidations": "USD per (symbol, day), one long/short pair per day",
+    "mark_iv": "percent (e.g. 55.2 means 55.2% IV)",
+    "atm_iv": "percent",
+    "total_oi": "option contracts (Deribit units), NOT USD",
+}
 
 
 def build_context() -> dict:
     from analytics.options_metrics import latest_term_structure
     from analytics.regime import compute_regime
     from analytics.zscores import cross_sectional_table
-    from analytics.data_access import load_dvol, load_liquidations
+    from analytics.data_access import load_dvol
+    from analytics.liquidations import daily_liquidations
 
     regime = compute_regime()
     table = cross_sectional_table()
     dvol = load_dvol()
-    liquidations = load_liquidations()
+    liquidations = daily_liquidations()
 
     context: dict = {"generated_utc": datetime.now(timezone.utc).isoformat(timespec="minutes")}
+    context["units"] = UNITS
+    try:
+        from dashboard.shared import data_freshness
+        context["data_as_of"] = data_freshness()
+    except Exception as error:  # noqa: BLE001 - the briefing still generates without it
+        print(f"data_as_of unavailable: {str(error)[:160]}")
     if not regime.empty:
         weekly = regime["regime"].iloc[-90:].resample("7D").last().round(2).dropna()
         context["regime_weekly_last_90d"] = {f"{ts:%Y-%m-%d}": v for ts, v in weekly.items()}
@@ -65,8 +86,9 @@ def build_context() -> dict:
             numeric.round(2).to_json(orient="records")
         )
     if not liquidations.empty:
-        recent = liquidations[liquidations["ts"] > liquidations["ts"].max() - pd.Timedelta(days=14)]
-        daily = recent.groupby(recent["ts"].dt.floor("D"))[["long_usd", "short_usd"]].sum()
+        indexed = liquidations.set_index("day").sort_index()
+        recent = indexed[indexed.index > indexed.index.max() - pd.Timedelta(days=14)]
+        daily = recent.groupby("day")[["long_usd", "short_usd"]].sum()
         context["liquidations_daily_14d_usd"] = {
             str(day.date()): {"long": int(row["long_usd"]), "short": int(row["short_usd"])}
             for day, row in daily.iterrows()

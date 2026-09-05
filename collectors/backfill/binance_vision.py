@@ -130,11 +130,55 @@ def backfill_funding(client: httpx.Client, base: str, symbol: str, done: set[str
                 "symbol": base,
                 "ts": pd.to_datetime(df["calc_time"], unit="ms", utc=True).dt.floor("h"),
                 "rate": df["last_funding_rate"], "exchange": "binance",
+                "interval_h": df["funding_interval_hours"],
             })
             added = append_parquet(out, "funding")
             print(f"  funding {base} {month}: +{added}")
         done.add(key)
         save_manifest(done)
+
+
+_FUNDING_INTERVALS: dict[str, str] | None = None  # cached ccxt_symbol -> interval string
+
+
+def funding_interval_hours(binance, ccxt_symbol: str) -> float | None:
+    """Current funding interval for a symbol, cached per process (one call)."""
+    global _FUNDING_INTERVALS
+    if _FUNDING_INTERVALS is None:
+        try:
+            _FUNDING_INTERVALS = {symbol: entry.get("interval") or ""
+                                  for symbol, entry in binance.fetch_funding_intervals().items()}
+        except Exception as error:  # noqa: BLE001
+            print(f"  funding intervals: {error}")
+            _FUNDING_INTERVALS = {}
+    interval = _FUNDING_INTERVALS.get(ccxt_symbol, "")
+    return float(interval[:-1]) if interval.endswith("h") else None
+
+
+def gap_fill_funding(base: str, ccxt_symbol: str) -> None:
+    """Fill funding from the start of the current month to now via ccxt.
+    Rows carry the interval_h from the symbol's current funding interval
+    (fetch_funding_rates entries carry no interval on binance; the venue's
+    fetch_funding_intervals lookup does)."""
+    import ccxt
+
+    binance = ccxt.binanceusdm({"enableRateLimit": True})
+    interval_h = funding_interval_hours(binance, ccxt_symbol)
+    since = int(pd.Timestamp.now(tz="UTC").normalize().replace(day=1).timestamp() * 1000)
+    rows = []
+    while True:
+        history = binance.fetch_funding_rate_history(ccxt_symbol, since=since, limit=1000)
+        if not history:
+            break
+        for entry in history:
+            rows.append({"symbol": base, "ts": pd.Timestamp(entry["timestamp"], unit="ms", tz="UTC").floor("h"),
+                         "rate": entry["fundingRate"], "exchange": "binance", "interval_h": interval_h})
+        if len(history) < 1000:
+            break
+        since = history[-1]["timestamp"] + 1
+    if rows:
+        added = append_parquet(pd.DataFrame(rows), "funding")
+        print(f"  funding {base} gap-fill: +{added}")
 
 
 def backfill_metrics(client: httpx.Client, base: str, symbol: str, done: set[str]) -> None:
@@ -182,6 +226,7 @@ def main() -> None:
             gap_fill_klines(coin["base"], coin["binance_symbol"])
         elif dataset == "funding":
             backfill_funding(client, coin["base"], symbol, done)
+            gap_fill_funding(coin["base"], coin["binance_symbol"])
         else:
             backfill_metrics(client, coin["base"], symbol, done)
     print("backfill complete")

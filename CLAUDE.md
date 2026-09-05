@@ -20,9 +20,9 @@ Streamlit dashboard, and Claude-generated market briefings. Free data sources on
 | Table | Columns | Notes |
 |---|---|---|
 | ohlcv | symbol, ts, open, high, low, close, volume, exchange | 1h Binance candles; symbol is the base asset (BTC), volume in base units |
-| funding | symbol, ts, rate, exchange | Hourly snapshots (live) + 8h funding events (backfill). Rate per interval, not annualized |
+| funding | symbol, ts, rate, exchange, interval_h | Hourly snapshots (live) + funding events (backfill). Rate is per interval_h-hour interval (1h hyperliquid snapshots; 4h/8h binance settlements), not annualized. `load_funding()` normalises to a per-8h rate (rate * 8 / interval_h) before averaging exchanges |
 | open_interest | symbol, ts, oi_usd, exchange | exchange in {binance, bybit, hyperliquid, coinalyze_agg}. Sum live exchanges; coinalyze_agg is the daily backfill - never add it to live rows for the same ts |
-| liquidations | symbol, ts, long_usd, short_usd | Aggregated across exchanges (Coinalyze) |
+| liquidations | symbol, ts, long_usd, short_usd, interval | Aggregated across exchanges (Coinalyze). interval is `1h` (live collector) or `1d` (daily backfill); use `analytics/liquidations.py:daily_liquidations()` for one pair per symbol-day, never a raw sum |
 | options_dvol | currency, ts, open/high/low/close | Deribit DVOL hourly, BTC+ETH, since 2021-04 |
 | options_chain | instrument, ts, currency, expiry, strike, option_type, mark_iv, open_interest, underlying_price, volume | Daily 00 UTC snapshots; mark_iv in % |
 | universe.parquet | rank, base, binance_symbol, bybit_symbol, hyperliquid_symbol, quote_volume | Top 50 crypto perps by Binance volume |
@@ -31,11 +31,10 @@ Streamlit dashboard, and Claude-generated market briefings. Free data sources on
 
 ```python
 import duckdb
-duckdb.sql("SELECT symbol, avg(rate)*3*365*100 AS apr FROM 'data/funding/2026.parquet' WHERE ts > now() - INTERVAL 7 DAY GROUP BY symbol ORDER BY apr DESC LIMIT 10").show()
+duckdb.sql("SELECT symbol, avg(rate * 8.0 / interval_h)*3*365*100 AS apr FROM read_parquet('data/funding/*.parquet', union_by_name=true) WHERE ts > now() - INTERVAL 7 DAY GROUP BY symbol ORDER BY apr DESC LIMIT 10").show()
 ```
 
-Prefer the helpers in `analytics/data_access.py` — `load_open_interest()` already
-resolves the live-vs-backfill source overlap correctly.
+Prefer the helpers in `analytics/data_access.py`.
 
 ## Metric definitions
 
@@ -51,7 +50,7 @@ resolves the live-vs-backfill source overlap correctly.
 - ccxt hyperliquid spot-market parsing is broken; always construct it with `{"options": {"fetchMarkets": {"types": ["swap"]}}}`.
 - Binance/Bybit `fetch_open_interest` returns contracts only; convert to USD with the last price (done in `collectors/hourly.py`).
 - Binance lists tokenized stocks/commodities as perps; the universe filter keeps only `underlyingType == "COIN"`.
-- Binance REST OI history is capped at 30 days — that's why hourly self-collection matters.
+- Binance REST OI history is capped at 30 days — that's why hourly self-collection matters. The hourly collector also runs a 48h catch-up sweep (funding on every venue with `fetchFundingRateHistory`, OI on Binance only) whenever the newest stored row for a table is over 90 minutes old. Bybit and Hyperliquid expose no usable OI history endpoint, so their OI gaps stay unfillable.
 - All parquet appends dedupe on the keys in `collectors/common.py:TABLE_KEYS`; re-running anything is safe.
 - The GitHub Actions workflows commit data; local work should `git pull` before running collectors to avoid conflicts.
 

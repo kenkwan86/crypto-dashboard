@@ -31,7 +31,7 @@ TABLE_KEYS = {
     "ohlcv": ["symbol", "ts", "exchange"],
     "funding": ["symbol", "ts", "exchange"],
     "open_interest": ["symbol", "ts", "exchange"],
-    "liquidations": ["symbol", "ts"],
+    "liquidations": ["symbol", "ts", "interval"],
     "options_dvol": ["currency", "ts"],
     "options_chain": ["instrument", "ts"],
 }

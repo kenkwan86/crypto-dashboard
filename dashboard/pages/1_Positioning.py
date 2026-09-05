@@ -7,9 +7,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard import shared
+import pandas as pd
 
 st.set_page_config(page_title="Positioning", layout="wide")
 st.title("Positioning - funding and open interest")
+
+shared.render_freshness()
 
 funding = shared.funding_panels()
 oi = shared.oi_panels()
@@ -21,7 +24,9 @@ with col_coin:
 with col_lookback:
     cutoff = shared.lookback_cutoff()
 funding = {name: shared.clip_index(panel, cutoff) for name, panel in funding.items()}
-oi = {name: shared.clip_index(panel, cutoff) for name, panel in oi.items()}
+oi_source = oi.get("source", {})
+oi = {name: shared.clip_index(panel, cutoff) for name, panel in oi.items()
+      if isinstance(panel, pd.DataFrame)}
 
 col1, col2 = st.columns(2)
 
@@ -42,7 +47,8 @@ with col1:
 with col2:
     figure = go.Figure()
     figure.add_scatter(x=oi["value"].index, y=oi["value"][symbol] / 1e6, name="OI", line={"color": "#3b82f6"})
-    figure.update_layout(title=f"{symbol} open interest ($M)", height=350, template="plotly_dark")
+    figure.update_layout(title=f"{symbol} open interest ($M, source: {oi_source.get(symbol, 'n/a')})",
+                         height=350, template="plotly_dark")
     st.plotly_chart(figure, use_container_width=True)
 
     figure = go.Figure()
