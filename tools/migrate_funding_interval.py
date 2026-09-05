@@ -1,11 +1,16 @@
 """One-off migration: add interval_h to every historical funding row.
 
-Idempotent: files whose interval_h is already fully populated are skipped.
-Assignment rules (see review F1/F3):
+Idempotent, and re-runnable: a file is skipped only when interval_h is fully
+populated AND no bybit row disagrees with that symbol's live funding interval.
+A file that is complete but carries stale bybit labels is relabelled in place
+(second pass), so a venue-wide guess made by an earlier run gets corrected.
+Assignment rules (see review F1/F3, V1):
   hyperliquid -> 1.0 (hourly funding)
-  bybit       -> the venue's funding interval from one load_markets() lookup
-                 (mode of info.fundingInterval minutes across swap markets),
-                 defaulting to 8.0
+  bybit       -> the symbol's own funding interval, from the same
+                 collectors.hourly.funding_interval_map() lookup the live
+                 collector uses (bybit sets the interval PER SYMBOL: most are
+                 8h, but a couple of dozen are 4h and ONG is 1h). Falls back to
+                 8.0 only for a symbol the lookup does not cover.
   binance rows before the first live hourly row (2026-08-25 08:00 UTC, real
                settlement events) -> median gap in hours between consecutive
                settlements per (symbol, calendar month), snapped to the nearest
@@ -38,6 +43,7 @@ from collectors.common import DATA_DIR  # noqa: E402
 # month where the two disagree; {1, 4, 8} is used so the check's value-set
 # assertion holds (a 2h gap is equidistant from 1h and 4h in log space).
 SNAP_CANDIDATES = (1.0, 4.0, 8.0)
+BYBIT_DEFAULT_H = 8.0  # only for a symbol the live per-symbol lookup does not cover
 CUTOFF = pd.Timestamp("2026-08-25 08:00:00", tz="UTC")  # first live hourly funding row
 MIN_MONTH_ROWS = 10
 
@@ -52,19 +58,28 @@ def month_key(ts: pd.Series) -> pd.Series:
     return ts.dt.year * 12 + ts.dt.month
 
 
-def bybit_interval_hours() -> float:
-    """Venue-level funding interval from one ccxt bybit load_markets() call."""
+def bybit_interval_map() -> dict[str, float]:
+    """Per-base funding interval for bybit, keyed by the universe's base asset.
+
+    Bybit sets the funding interval per symbol, so a venue-wide value is wrong
+    for every 4h/1h market. This reuses the live collector's lookup
+    (collectors.hourly.funding_interval_map) so the migration and the hourly
+    collector can never disagree."""
     try:
         import ccxt
 
-        markets = ccxt.bybit({"enableRateLimit": True}).load_markets()
-        minutes = [m.get("info", {}).get("fundingInterval") for m in markets.values()
-                   if m.get("swap") and m.get("info", {}).get("fundingInterval")]
-        if minutes:
-            return float(Counter(minutes).most_common(1)[0][0]) / 60.0
+        from collectors.hourly import funding_interval_map
+
+        universe = pd.read_parquet(DATA_DIR / "universe.parquet")
+        wanted = {symbol: base for symbol, base in zip(universe["bybit_symbol"], universe["base"])
+                  if pd.notna(symbol)}
+        exchange = ccxt.bybit({"enableRateLimit": True})
+        found = funding_interval_map(exchange, list(wanted))
+        return {wanted[symbol]: hours for symbol, hours in found.items()
+                if symbol in wanted and hours is not None}
     except Exception as error:  # noqa: BLE001 - fall back to the documented default
-        print(f"  bybit load_markets failed ({str(error)[:120]}), defaulting to 8h")
-    return 8.0
+        print(f"  bybit interval lookup failed ({str(error)[:120]}), defaulting to {BYBIT_DEFAULT_H}h")
+        return {}
 
 
 def binance_current_interval() -> dict[str, float]:
@@ -114,7 +129,15 @@ def inherit(symbol: str, month: int, snapped: dict) -> float | None:
     return snapped[(symbol, min(candidates, key=lambda m: abs(m - month)))]
 
 
-def assign(df: pd.DataFrame, bybit_h: float, current: dict[str, float],
+def bybit_mismatch(df: pd.DataFrame, bybit_map: dict[str, float]) -> pd.Series:
+    """Bybit rows whose stored interval_h disagrees with the symbol's live value."""
+    if "interval_h" not in df.columns or not bybit_map:
+        return pd.Series(False, index=df.index)
+    target = df["symbol"].map(bybit_map)
+    return (df["exchange"] == "bybit") & target.notna() & (df["interval_h"] != target)
+
+
+def assign(df: pd.DataFrame, bybit_map: dict[str, float], current: dict[str, float],
            snapped: dict, counts: dict) -> pd.DataFrame:
     df = df.copy()
 
@@ -123,7 +146,7 @@ def assign(df: pd.DataFrame, bybit_h: float, current: dict[str, float],
         if exchange == "hyperliquid":
             return 1.0
         if exchange == "bybit":
-            return bybit_h
+            return bybit_map.get(symbol, BYBIT_DEFAULT_H)
         if exchange != "binance":
             return None
         month = ts.year * 12 + ts.month
@@ -147,8 +170,10 @@ def main() -> None:
     files = sorted((DATA_DIR / "funding").glob("*.parquet"))
     if not files:
         raise SystemExit("no funding parquet files found")
-    bybit_h = bybit_interval_hours()
-    print(f"bybit venue interval: {bybit_h}h")
+    bybit_map = bybit_interval_map()
+    off_default = {base: hours for base, hours in bybit_map.items() if hours != BYBIT_DEFAULT_H}
+    print(f"bybit per-symbol intervals: {len(bybit_map)} symbols, "
+          f"{len(off_default)} not {BYBIT_DEFAULT_H}h -> {dict(sorted(off_default.items()))}")
     current = binance_current_interval()
     print(f"binance current intervals: {len(current)} symbols")
 
@@ -160,22 +185,42 @@ def main() -> None:
           f"{sum(1 for v in counts.values() if v < MIN_MONTH_ROWS)}")
 
     totals: Counter = Counter()
+    relabelled: Counter = Counter()
     for path in files:
         df = pd.read_parquet(path)
         df["ts"] = pd.to_datetime(df["ts"], utc=True)
-        if "interval_h" in df.columns and df["interval_h"].notna().all():
-            print(f"{path.name}: interval_h already complete, skipping")
+        complete = "interval_h" in df.columns and df["interval_h"].notna().all()
+        stale = bybit_mismatch(df, bybit_map)
+        if complete and not stale.any():
+            print(f"{path.name}: interval_h already complete and bybit labels current, skipping")
             totals.update(df["interval_h"].value_counts().to_dict())
             continue
         before = df["interval_h"].notna().sum() if "interval_h" in df.columns else 0
-        migrated = assign(df, bybit_h, current, snapped, counts)
+        if complete:
+            # Second pass: only the stale bybit labels move; everything else is
+            # left exactly as stored.
+            migrated = df.copy()
+            migrated.loc[stale, "interval_h"] = migrated.loc[stale, "symbol"].map(bybit_map)
+        else:
+            migrated = assign(df, bybit_map, current, snapped, counts)
+        changed = migrated["interval_h"].ne(df["interval_h"]) if "interval_h" in df.columns \
+            else pd.Series(True, index=df.index)
+        bybit_changed = changed & (df["exchange"] == "bybit") & df.get(
+            "interval_h", pd.Series(pd.NA, index=df.index)).notna()
+        relabelled.update(df.loc[bybit_changed, "symbol"].value_counts().to_dict())
         totals.update(migrated["interval_h"].value_counts().to_dict())
         print(f"{path.name}: {len(migrated)} rows, interval_h filled for "
               f"{migrated['interval_h'].notna().sum() - before}, "
+              f"bybit rows relabelled {int(bybit_changed.sum())}, "
               f"null {migrated['interval_h'].isna().sum()}")
         temp = path.with_suffix(".parquet.tmp")
         migrated.to_parquet(temp, index=False)
         os.replace(temp, path)
+
+    if relabelled:
+        print("bybit rows relabelled (symbol -> rows):")
+        for symbol in sorted(relabelled):
+            print(f"  {symbol}: {relabelled[symbol]} -> {bybit_map.get(symbol)}h")
 
     print("per-value row counts (interval_h -> rows):")
     for value in sorted(t for t in totals if t == t):

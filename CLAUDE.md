@@ -14,13 +14,15 @@ Streamlit dashboard, and Claude-generated market briefings. Free data sources on
 - `python -m analytics.zscores` / `python -m analytics.regime` / `python -m analytics.options_metrics`
 - `streamlit run dashboard/app.py` - dashboard at localhost:8501
 - `python -m briefing.generate` - Claude market briefing via headless Claude Code (no API key locally)
+- `python -m analytics.vol` - DVOL minus 30d realised vol (close-to-close default, Parkinson alongside) and its full-history percentile, BTC/ETH; shown on the Options page
+- `python -m analytics.flush` - hourly liquidations / OI z-scores, flush events (z >= 3) and the 24h-forward falsifier; shown on the Liquidations page
 
 ## Data schemas (parquet, `data/<table>/<year>.parquet`, all ts UTC)
 
 | Table | Columns | Notes |
 |---|---|---|
 | ohlcv | symbol, ts, open, high, low, close, volume, exchange | 1h Binance candles; symbol is the base asset (BTC), volume in base units |
-| funding | symbol, ts, rate, exchange, interval_h | Hourly snapshots (live) + funding events (backfill). Rate is per interval_h-hour interval (1h hyperliquid snapshots; 4h/8h binance settlements), not annualized. `load_funding()` normalises to a per-8h rate (rate * 8 / interval_h) before averaging exchanges |
+| funding | symbol, ts, rate, exchange, interval_h | Hourly snapshots (live) + funding events (backfill). Rate is per interval_h-hour interval (1h hyperliquid snapshots; 4h/8h binance settlements; bybit sets the interval **per symbol** - mostly 8h, ~23 of the universe are 4h and ONG is 1h), not annualized. `load_funding()` normalises to a per-8h rate (rate * 8 / interval_h) before averaging exchanges |
 | open_interest | symbol, ts, oi_usd, exchange | exchange in {binance, bybit, hyperliquid, coinalyze_agg}. Sum live exchanges; coinalyze_agg is the daily backfill - never add it to live rows for the same ts |
 | liquidations | symbol, ts, long_usd, short_usd, interval | Aggregated across exchanges (Coinalyze). interval is `1h` (live collector) or `1d` (daily backfill); use `analytics/liquidations.py:daily_liquidations()` for one pair per symbol-day, never a raw sum |
 | options_dvol | currency, ts, open/high/low/close | Deribit DVOL hourly, BTC+ETH, since 2021-04 |
@@ -41,6 +43,9 @@ Prefer the helpers in `analytics/data_access.py`.
 - z-scores: value vs its own trailing window (30/90/365 days), computed in `analytics/zscores.py`.
 - OI z is the z-score of the **7-day % change** in OI, not the level.
 - Regime score (`analytics/regime.py`): mean of median funding z90, funding-level 1y percentile score, median OI z90, median momentum z90, breadth score, and BTC DVOL 1y percentile score; each clipped to [-3,3]. Positive = hot/crowded, negative = washed out.
+- Crowding quadrant (`analytics/crowding.py`): per-coin label from funding z90 x OI-change z90 (crowded long / short-squeeze fuel / capitulation / apathy) at |funding z| >= 0.75 and |OI z| >= 0.50; Screener page. Falsifier: it does not predict 7d returns - see `docs/signals.md`.
+- Regime forward returns (`analytics/regime_returns.py`): median/p25/p75 BTC and universe-average 7d and 30d forward returns per quintile of the composite regime score, with contributing-coin counts; Home page. Flat across buckets, so labelled descriptive only.
+- Cross-venue funding basis (`analytics/funding_basis.py`): per-venue funding normalised to 8h (`rate * 8 / interval_h`), then Binance minus Hyperliquid and Binance minus Bybit with a 30d z-score - never averaged across venues; Positioning page.
 - RR25 (`analytics/options_metrics.py`): 25-delta call IV minus 25-delta put IV, deltas computed via Black-Scholes from mark IV (Deribit book summary has no greeks).
 
 ## Gotchas

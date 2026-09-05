@@ -95,6 +95,25 @@ def regime_history() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=CACHE_TTL_S)
+def regime_forward_returns() -> tuple[pd.DataFrame, dict]:
+    """Regime bucket table plus the current reading (analytics.regime_returns)."""
+    from analytics.regime_returns import (bucket_table, current_reading,
+                                          forward_return_frame)
+
+    frame = forward_return_frame()
+    table = bucket_table(frame)
+    return table, current_reading(frame, table)
+
+
+@st.cache_data(ttl=CACHE_TTL_S)
+def funding_basis() -> pd.DataFrame:
+    """Current cross-venue funding spreads (analytics.funding_basis)."""
+    from analytics.funding_basis import current_basis
+
+    return current_basis()
+
+
+@st.cache_data(ttl=CACHE_TTL_S)
 def liquidations() -> pd.DataFrame:
     from analytics.data_access import load_liquidations
 

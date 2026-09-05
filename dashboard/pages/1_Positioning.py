@@ -57,3 +57,34 @@ with col2:
     figure.add_hline(y=-2, line_dash="dot", line_color="#22c55e")
     figure.update_layout(title=f"{symbol} 7d OI-change z-score (90d)", height=300, template="plotly_dark")
     st.plotly_chart(figure, use_container_width=True)
+
+st.subheader("Cross-venue funding basis")
+st.caption("Binance vs Hyperliquid vs Bybit, never averaged. Each venue's rate is normalised to "
+           "a per-8h footing (rate * 8 / interval_h) before subtracting, then annualised (3x daily). "
+           "Only coins listed on all three venues. Positive spread = that row's first venue has the "
+           "crowd paying. Every number on a row is read at one hour - the last hour the "
+           "Binance/Hyperliquid spread exists - so the legs subtract to the spread.")
+
+basis = shared.funding_basis()
+if basis.empty:
+    st.info("No overlapping three-venue funding rows yet.")
+else:
+    basis_columns = ["binance_apr_%", "bybit_apr_%", "hyperliquid_apr_%",
+                     "binance_hyperliquid_apr_%", "binance_hyperliquid_z", "binance_hyperliquid_paying",
+                     "binance_bybit_apr_%", "binance_bybit_z", "binance_bybit_paying", "age_h"]
+    basis_numeric = [c for c in basis_columns if not c.endswith("_paying")]
+    st.dataframe(
+        basis[basis_columns].style
+        .background_gradient(subset=["binance_hyperliquid_z", "binance_bybit_z"],
+                             cmap="RdYlGn_r", vmin=-3, vmax=3)
+        .format("{:.2f}", subset=basis_numeric),
+        use_container_width=True, height=500,
+    )
+    stale_count = int(basis["stale"].sum())
+    max_age = basis["age_h"].max()
+    if stale_count:
+        st.warning(f"{stale_count}/{len(basis)} rows read at a spread hour older than 6h "
+                   f"(max {max_age:.1f}h). Hyperliquid is usually the laggard.")
+    st.caption("z = z-score of the hourly spread vs its trailing 30 days. Cross-venue history only "
+               "starts 2026-08-25, so the z-window is not yet full - run "
+               "`python -m analytics.funding_basis` for the exact overlap.")

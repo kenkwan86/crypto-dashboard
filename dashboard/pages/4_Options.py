@@ -8,6 +8,13 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard import shared
+from analytics import vol
+
+
+@st.cache_data(ttl=shared.CACHE_TTL_S)
+def cached_vol_spread() -> pd.DataFrame:
+    return vol.vol_spread()
+
 
 st.set_page_config(page_title="Options", layout="wide")
 st.title("BTC / ETH options - volatility and skew")
@@ -27,6 +34,41 @@ if not dvol.empty:
                            line={"color": color, "width": 1})
     figure.update_layout(title="Deribit DVOL (30d implied volatility index)", height=400,
                          template="plotly_dark")
+    st.plotly_chart(figure, use_container_width=True)
+
+st.header("Implied vs realised volatility")
+st.caption("DVOL is 30-day implied vol; RV30 is 30-day realised vol from hourly candles. "
+           f"Spread = DVOL - RV30 on the {vol.DEFAULT_ESTIMATOR} estimator; the percentile "
+           "is a full-history rank, so a high percentile means options are historically rich.")
+
+spread_history = cached_vol_spread()
+if spread_history.empty:
+    st.info("Not enough overlapping DVOL / OHLCV history yet.")
+else:
+    latest_vol = spread_history.groupby("currency", as_index=False).last()
+    for _, row in latest_vol.iterrows():
+        st.subheader(row["currency"])
+        cols = st.columns(5)
+        cols[0].metric("DVOL (implied)", f"{row['dvol']:.1f}")
+        cols[1].metric("RV30 close-to-close", f"{row['rv30_close_to_close']:.1f}")
+        cols[2].metric("RV30 Parkinson", f"{row['rv30_parkinson']:.1f}")
+        cols[3].metric("Spread (DVOL - RV30)", f"{row['spread']:+.1f}")
+        cols[4].metric("Spread percentile", f"{row['spread_pct']:.0f}")
+        st.write(f"**{vol.reading(row['spread_pct'])}**")
+
+    window_start = spread_history["ts"].max() - pd.Timedelta(days=180)
+    recent_vol = spread_history[spread_history["ts"] >= window_start]
+    figure = go.Figure()
+    for currency, color in [("BTC", "#f59e0b"), ("ETH", "#3b82f6")]:
+        series = recent_vol[recent_vol["currency"] == currency]
+        if series.empty:
+            continue
+        figure.add_scatter(x=series["ts"], y=series["dvol"], name=f"{currency} DVOL",
+                           line={"color": color, "width": 1.5})
+        figure.add_scatter(x=series["ts"], y=series["rv30_close_to_close"], name=f"{currency} RV30",
+                           line={"color": color, "width": 1.5, "dash": "dot"})
+    figure.update_layout(title="DVOL vs RV30, last 180 days (dotted = realised)",
+                         yaxis_title="annualised vol (%)", height=420, template="plotly_dark")
     st.plotly_chart(figure, use_container_width=True)
 
 term = shared.options_term_structure()
