@@ -1,16 +1,14 @@
 {
-  "observed_at": "2026-09-13T01:16:22.894844+00:00",
-  "elapsed_s": 429.2,
+  "observed_at": "2026-09-13T01:39:33.391625+00:00",
+  "elapsed_s": 377.3,
   "counts": {
-    "funding_sweep": 379,
-    "open_interest_sweep": 450,
-    "funding": 105,
-    "open_interest": 81,
-    "liquidations": 339,
-    "oi_coinalyze": 450,
-    "ohlcv": 450,
-    "options_dvol": 48,
-    "options_chain": 1822
+    "funding_sweep": 0,
+    "open_interest_sweep": 0,
+    "funding": 0,
+    "open_interest": 0,
+    "liquidations": 0,
+    "oi_coinalyze": 0,
+    "ohlcv": 0
   },
   "coverage": {
     "funding": {
@@ -21,7 +19,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-09-13 01:00:00+00:00",
-      "age_hours": 0.27243335333333335,
+      "age_hours": 0.6582531372222222,
       "duplicate_rows": 9484
     },
     "open_interest": {
@@ -32,7 +30,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-09-13 01:00:00+00:00",
-      "age_hours": 0.27243335333333335,
+      "age_hours": 0.6582531372222222,
       "duplicate_rows": 27574
     },
     "ohlcv": {
@@ -43,7 +41,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-09-13 00:00:00+00:00",
-      "age_hours": 1.2724333533333334,
+      "age_hours": 1.6582531372222222,
       "duplicate_rows": 414
     },
     "liquidations": {
@@ -54,7 +52,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-09-13 01:00:00+00:00",
-      "age_hours": 0.27243335333333335,
+      "age_hours": 0.6582531372222222,
       "duplicate_rows": 16431
     },
     "options_dvol": {
@@ -65,7 +63,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-09-13 00:00:00+00:00",
-      "age_hours": 1.2724333533333334,
+      "age_hours": 1.6582531372222222,
       "duplicate_rows": 628
     },
     "options_chain": {
@@ -76,7 +74,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-09-13 01:16:20.388576+00:00",
-      "age_hours": 0.00010319333333333333,
+      "age_hours": 0.3859229772222222,
       "duplicate_rows": 8988
     }
   },
