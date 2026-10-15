@@ -7,6 +7,14 @@ labels these as descriptive. Unknown historical universe membership, absent
 legacy availability timestamps, overlapping returns and tuned crowding thresholds
 still prevent interpreting this as a fully point-in-time strategy backtest.
 
+Funding z-scores (`funding_z90` and the other windows, the crowding and regime
+inputs) changed on 2026-10-15: the daily funding value is now the mean of Binance
+00/08/16 UTC samples normalised to per-8h, replacing the earlier all-venue hourly
+average whose daily `.last()` switched venue and hour on 2026-08-25. Values and
+z-scores differ from the old ones (on 2026-10-14, 15 of 50 coins changed side
+of the 0.75 cutoff and BTC funding z90 moved from -0.72 to -2.08), so numbers
+quoted below were computed under the old definition and are archived.
+
 Funding basis retains whole-observation provenance and uses a 30-calendar-day
 z-window with 48 minimum observations. The current view excludes stale spreads
 by default. OI source selection now freezes at the first 90 observed daily values,

@@ -5,6 +5,7 @@ import streamlit as st
 from dashboard import shared
 st.set_page_config(page_title='Research', layout='wide')
 st.title('Signal research')
+shared.render_sync_status()
 st.caption('Historical diagnostics. Signal definitions use prior observations; historical source revisions can still change results.')
 st.warning('Universe membership before recorded snapshots is unknown. Legacy backfills lack availability timestamps. These diagnostics are not a fully point-in-time strategy backtest and do not establish a sizing rule.')
 st.subheader("Forward returns by regime bucket")

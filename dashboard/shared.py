@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
@@ -21,18 +24,20 @@ def clip_index(frame: pd.DataFrame, cutoff: pd.Timestamp | None) -> pd.DataFrame
     return frame if cutoff is None else frame[frame.index >= cutoff]
 
 
-# Hours of age after which a table is flagged with st.error on the dashboard.
-STALE_ERROR_HOURS = {"funding": 3, "open_interest": 3, "liquidations": 3,
-                     "options_dvol": 30, "options_chain": 30}
-TABLES = ("ohlcv", "funding", "open_interest", "liquidations", "options_dvol", "options_chain")
+SYNC_STATUS_PATH = Path(__file__).resolve().parent.parent / "logs" / "sync-status.json"
 
 
-@st.cache_data(ttl=CACHE_TTL_S)
-def data_freshness() -> dict[str, dict]:
-    return market_snapshot()['health']
+def render_sync_status() -> None:
+    """Show an error when the hourly git sync is failing or overdue."""
+    from collectors.run_status import sync_warning
+
+    message = sync_warning(SYNC_STATUS_PATH, datetime.now(timezone.utc))
+    if message:
+        st.error(message)
 
 
 def render_freshness() -> None:
+    render_sync_status()
     snapshot = market_snapshot()
     health = snapshot['health']
     healthy = sum(row['healthy'] for row in health.values())

@@ -34,6 +34,15 @@ Each hourly run writes non-sensitive counts and per-source coverage to
 zero added rows can be an idempotent result if existing data remains healthy.
 A failure string is never counted as a positive number of rows.
 
+Coinalyze liquidations store complete hours only. `collect_coinalyze` drops any
+point at or after the current hour and writes a zero row (`long_usd` and `short_usd`
+0.0, interval `1h`) for every whole hour in the 24-hour window without a point, for
+each market that returned a `history` list (an empty list is valid). A market whose
+`history` is missing or not a list gets no fill and one printed warning; markets
+absent from the response get no rows. Without this, a coin with no liquidations
+looked stale in coverage and quiet days fell below the 20-row rule in
+`daily_liquidations()`. Older gaps are not refilled.
+
 ## Universe
 
 `collectors.universe` maintains the current top-50 crypto perpetual universe and
@@ -51,3 +60,17 @@ migration scripts remain uncertain; this update does not relabel them.
 
 Before an authorized collector run, reconcile incoming tracked data with local
 changes. Tests and UI verification do not invoke collectors or load credentials.
+
+## Hourly job and sync status
+
+`tools/run_hourly.ps1` (Task Scheduler) resolves the repository root from its own
+location, runs the collector, commits only `data/` (pathspec), then `git pull --rebase`
+and `git push`. Every git step's exit code is checked. If anything outside `data/` is
+modified, staged or untracked, the run still collects but logs `sync BLOCKED`, adds
+and commits nothing, skips pull/push and exits 1; the collected data is committed by
+the next run on a clean code tree. Any other failed step logs `sync FAILED: <step>
+exit=<code>` and exits 1 (a failed rebase is aborted first). `=== run ok ===` is
+written only when every step succeeded. Each run writes `logs/sync-status.json`
+(`last_attempt_utc`, `last_success_utc`, `ok`, `error`); the dashboard reads it
+through `collectors.run_status.sync_warning`. `tests/test_run_hourly.py` runs the
+script against temporary git repositories and needs Windows PowerShell.

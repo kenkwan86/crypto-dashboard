@@ -22,6 +22,14 @@ expander shows each expected coin/source feed, distinguishing inactive historica
 series from missing or stale current ones. A table's newest timestamp no longer
 stands in for every constituent's freshness.
 
+Every page also shows the hourly git sync health. `render_sync_status()` in
+`dashboard/shared.py` reads `logs/sync-status.json` (written by
+`tools/run_hourly.ps1`) through `collectors.run_status.sync_warning` and shows an
+`st.error` when the last run failed (naming the error and the last success, or
+"never succeeded"), when the last success is over 3 hours old, or when the file is
+unreadable. A missing file (cloud, fresh clone) is silent. `render_freshness()`
+calls it; Regime, Research and Coin Detail call it directly after the title.
+
 ## Briefing
 
 `python -m briefing.generate` still uses the existing authenticated model CLI.
