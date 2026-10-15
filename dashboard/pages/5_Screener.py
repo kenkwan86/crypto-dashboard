@@ -19,15 +19,20 @@ if table.empty:
 
 shared.render_freshness()
 
-display = table.copy()
+include_unusable = st.checkbox('Include stale, inactive or incomplete coins', value=False)
+display = table.copy() if include_unusable else table[table['eligible']].copy()
+if display.empty:
+    st.info('No coins pass current data checks. Enable the option above to inspect exclusions.')
+    st.stop()
 display["funding_apr_%"] = display["funding_rate"] * 3 * 365 * 100
 display["oi_usd_M"] = display["oi_usd"] / 1e6
 display["oi_change_7d_%"] = display["oi_change_7d"] * 100
 display["return_30d_%"] = display["return_30d"] * 100
-display["crowding"] = crowding.label_table(table)
-columns = ["crowding", "oi_usd_M", "oi_src", "funding_apr_%", "funding_z90", "oi_change_7d_%",
+display["crowding"] = crowding.label_table(display)
+display.loc[~display["eligible"], "crowding"] = "unavailable"
+columns = ["data_status", "crowding", "oi_usd_M", "oi_src", "funding_apr_%", "funding_z90", "oi_change_7d_%",
            "oi_z90", "return_30d_%", "momentum_z90"]
-text_columns = {"crowding", "oi_src"}
+text_columns = {"data_status", "crowding", "oi_src"}
 numeric_columns = [c for c in columns if c not in text_columns]
 
 
@@ -46,7 +51,7 @@ st.dataframe(
 st.caption("z90 = z-score vs trailing 90 days. funding_apr annualises the per-8h rate (funding is normalised to a per-8h rate before annualising, 3x daily).")
 
 st.subheader("Crowding quadrant")
-quadrant = display[["funding_z90", "oi_z90", "crowding"]].dropna(subset=["funding_z90", "oi_z90"])
+quadrant = display[display["eligible"]][["funding_z90", "oi_z90", "crowding"]].dropna(subset=["funding_z90", "oi_z90"])
 if quadrant.empty:
     st.info("No coin has both a funding and an OI z-score yet.")
 else:

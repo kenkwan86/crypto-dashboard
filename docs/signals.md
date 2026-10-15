@@ -1,4 +1,20 @@
-# Trading signals
+# Signal research
+
+Current behavior changed on 2026-09-11. Regime buckets now use prior-history
+quintile boundaries after 365 valid observations; daily forward returns require
+actual endpoint closing candles without price filling. The Research page always
+labels these as descriptive. Unknown historical universe membership, absent
+legacy availability timestamps, overlapping returns and tuned crowding thresholds
+still prevent interpreting this as a fully point-in-time strategy backtest.
+
+Funding basis retains whole-observation provenance and uses a 30-calendar-day
+z-window with 48 minimum observations. The current view excludes stale spreads
+by default. OI source selection now freezes at the first 90 observed daily values,
+without using future source depth. Old numerical results below are archived
+observations under the old implementation and have not been revalidated.
+
+## Archived analysis (2026-09-05)
+
 
 Three tradable signals layered on the existing z-score / regime analytics.
 - **Crowding quadrant** (`analytics/crowding.py`) - labels each coin crowded long /

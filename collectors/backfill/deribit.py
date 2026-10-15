@@ -10,7 +10,7 @@ import time
 import httpx
 import pandas as pd
 
-from collectors.common import append_parquet
+from collectors.common import load_environment, append_parquet
 
 DERIBIT = "https://www.deribit.com/api/v2"
 START = pd.Timestamp("2021-04-01", tz="UTC")
@@ -38,6 +38,7 @@ def backfill_dvol(client: httpx.Client, currency: str) -> int:
 
 
 def main() -> None:
+    load_environment()
     client = httpx.Client(timeout=30)
     for currency in ("BTC", "ETH"):
         added = backfill_dvol(client, currency)

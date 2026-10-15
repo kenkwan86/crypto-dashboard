@@ -1,102 +1,121 @@
-"""DuckDB access helpers for the parquet tables in data/.
-
-Rows for the same key can exist in several files (legacy backfill files plus
-per-writer -local / -cloud files), so every loader dedupes on the table's key
-before aggregating.
-"""
-
+"""Whole-observation reconciliation and UTC parquet access. No credential reads."""
 from __future__ import annotations
 
 import duckdb
 import pandas as pd
+from contextlib import contextmanager
+from contextvars import ContextVar
 
-from collectors.common import DATA_DIR
+from collectors.common import DATA_DIR, TABLE_KEYS
 
-# duckdb returns timestamptz in the session timezone; keep everything UTC.
-duckdb.sql("SET timezone = 'UTC'")
+SCHEMAS = {
+    "ohlcv": "symbol VARCHAR, ts TIMESTAMPTZ, exchange VARCHAR, open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume DOUBLE",
+    "funding": "symbol VARCHAR, ts TIMESTAMPTZ, exchange VARCHAR, rate DOUBLE, interval_h DOUBLE",
+    "open_interest": "symbol VARCHAR, ts TIMESTAMPTZ, exchange VARCHAR, oi_usd DOUBLE",
+    "liquidations": "symbol VARCHAR, ts TIMESTAMPTZ, interval VARCHAR, long_usd DOUBLE, short_usd DOUBLE",
+    "options_dvol": "currency VARCHAR, ts TIMESTAMPTZ, open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE",
+    "options_chain": "instrument VARCHAR, ts TIMESTAMPTZ, currency VARCHAR, expiry VARCHAR, strike DOUBLE, option_type VARCHAR, mark_iv DOUBLE, open_interest DOUBLE, underlying_price DOUBLE, volume DOUBLE",
+}
+
+_QUERY_CACHE = ContextVar('analytics_query_cache', default=None)
+
+
+@contextmanager
+def query_cache():
+    """Reuse reads within one snapshot only; never cache across data updates."""
+    marker = _QUERY_CACHE.set({})
+    try:
+        yield
+    finally:
+        _QUERY_CACHE.reset(marker)
 
 
 def query(sql: str) -> pd.DataFrame:
-    return duckdb.sql(sql).df()
+    cache = _QUERY_CACHE.get()
+    if cache is not None and sql in cache:
+        return cache[sql].copy()
+    # Separate connections avoid shared session state between Streamlit workers.
+    with duckdb.connect() as connection:
+        connection.execute("SET timezone = 'UTC'")
+        result = connection.execute(sql).df()
+    if cache is not None:
+        cache[sql] = result
+    return result.copy() if cache is not None else result
 
 
 def table_path(table: str) -> str:
-    return str(DATA_DIR / table / "*.parquet").replace("\\", "/")
+    if table not in TABLE_KEYS:
+        raise ValueError(f"Unknown table: {table}")
+    return (DATA_DIR / table / "*.parquet").as_posix().replace("'", "''")
 
 
 def table_exists(table: str) -> bool:
     return any((DATA_DIR / table).glob("*.parquet"))
 
 
+def deduped_sql(table: str) -> str:
+    """Newest ingestion wins as a whole row; legacy ties use file then row.
+
+    Legacy ordering is deterministic, not evidence of accuracy. Duplicate counts
+    include identical copies; original files remain available for conflict audit.
+    """
+    fields = [entry.split() for entry in SCHEMAS[table].split(", ")]
+    if not table_exists(table):
+        empty = ", ".join(f"NULL::{kind} AS {name}" for name, kind in fields)
+        return f"SELECT {empty}, NULL::TIMESTAMPTZ AS ingested_at, NULL::VARCHAR AS _source_file, 0 AS _duplicate_count, TRUE AS _legacy WHERE FALSE"
+    raw = f"read_parquet('{table_path(table)}', union_by_name=true, filename=true, file_row_number=true)"
+    names = set(query(f"DESCRIBE SELECT * FROM {raw}")["column_name"])
+    extra = [f"NULL::{kind} AS {name}" for name, kind in fields if name not in names]
+    if "ingested_at" not in names:
+        extra.append("NULL::TIMESTAMPTZ AS ingested_at")
+    projected = f"SELECT *{', ' + ', '.join(extra) if extra else ''} FROM {raw}"
+    keys = ", ".join(TABLE_KEYS[table])
+    return f"""SELECT * EXCLUDE(filename, file_row_number),
+        filename AS _source_file, ingested_at IS NULL AS _legacy,
+        count(*) OVER (PARTITION BY {keys}) - 1 AS _duplicate_count
+        FROM ({projected})
+        QUALIFY row_number() OVER (PARTITION BY {keys}
+            ORDER BY TRY_CAST(ingested_at AS TIMESTAMPTZ) DESC NULLS LAST,
+                     filename DESC, file_row_number DESC) = 1"""
+
+
+def load_table(table: str) -> pd.DataFrame:
+    return query(f"SELECT * FROM ({deduped_sql(table)}) ORDER BY ts")
+
+
 def load_funding() -> pd.DataFrame:
-    """Funding per (symbol, ts): mean rate across exchanges, normalised to a
-    per-8h rate. The stored rate is per interval_h hours (1h hyperliquid
-    snapshots, 4h/8h binance settlements), so rate * 8 / interval_h puts every
-    row on the same footing before averaging."""
-    return query(f"""
-        WITH deduped AS (
-            SELECT symbol, ts, exchange, max(rate) AS rate, max(interval_h) AS interval_h
-            FROM read_parquet('{table_path('funding')}', union_by_name=true)
-            GROUP BY symbol, ts, exchange
-        )
-        SELECT symbol, ts, avg(rate * 8.0 / interval_h) AS rate
-        FROM deduped
-        WHERE interval_h IS NOT NULL
-        GROUP BY symbol, ts ORDER BY symbol, ts
-    """)
+    return query(f"""SELECT symbol, ts, avg(rate * 8.0 / interval_h) AS rate,
+        count(DISTINCT exchange) AS venue_count FROM ({deduped_sql('funding')})
+        WHERE interval_h > 0 AND isfinite(rate)
+        GROUP BY symbol, ts ORDER BY symbol, ts""")
+
+
+def load_open_interest(exchange: str) -> pd.DataFrame:
+    if exchange not in {"binance", "bybit", "hyperliquid", "coinalyze_agg"}:
+        raise ValueError("Unknown OI source")
+    return query(f"""SELECT symbol, ts, oi_usd FROM ({deduped_sql('open_interest')})
+        WHERE exchange = '{exchange}' AND oi_usd > 0 ORDER BY symbol, ts""")
 
 
 def load_open_interest_binance() -> pd.DataFrame:
-    """Binance-only OI: one continuous series across backfill and live rows.
-    Use this for change/z-score computations - the total series mixes
-    source sets across time."""
-    return query(f"""
-        SELECT symbol, ts, max(oi_usd) AS oi_usd
-        FROM read_parquet('{table_path('open_interest')}', union_by_name=true)
-        WHERE exchange = 'binance'
-        GROUP BY symbol, ts ORDER BY symbol, ts
-    """)
+    return load_open_interest("binance")
 
 
 def load_open_interest_coinalyze() -> pd.DataFrame:
-    """Coinalyze aggregated OI only - the fallback continuous series for coins
-    without deep Binance OI history."""
-    return query(f"""
-        SELECT symbol, ts, max(oi_usd) AS oi_usd
-        FROM read_parquet('{table_path('open_interest')}', union_by_name=true)
-        WHERE exchange = 'coinalyze_agg'
-        GROUP BY symbol, ts ORDER BY symbol, ts
-    """)
+    return load_open_interest("coinalyze_agg")
 
 
 def load_daily_closes() -> pd.DataFrame:
-    return query(f"""
-        WITH deduped AS (
-            SELECT symbol, ts, exchange, max(close) AS close, max(volume) AS volume
-            FROM read_parquet('{table_path('ohlcv')}', union_by_name=true)
-            GROUP BY symbol, ts, exchange
-        )
-        SELECT symbol, date_trunc('day', ts) AS ts, last(close ORDER BY ts) AS close,
-               sum(volume * close) AS dollar_volume
-        FROM deduped
-        GROUP BY symbol, date_trunc('day', ts)
-        ORDER BY symbol, ts
-    """)
+    return query(f"""SELECT symbol, date_trunc('day', ts) AS ts,
+        last(close ORDER BY ts) AS close, sum(volume * close) AS dollar_volume,
+        count(DISTINCT ts) AS hours, max(ts) AS observed_at
+        FROM ({deduped_sql('ohlcv')}) WHERE exchange = 'binance' AND close > 0
+        GROUP BY symbol, date_trunc('day', ts) ORDER BY symbol, ts""")
 
 
 def load_liquidations() -> pd.DataFrame:
-    if not table_exists("liquidations"):
-        return pd.DataFrame(columns=["symbol", "ts", "interval", "long_usd", "short_usd"])
-    return query(f"""
-        SELECT symbol, ts, interval, max(long_usd) AS long_usd, max(short_usd) AS short_usd
-        FROM read_parquet('{table_path('liquidations')}', union_by_name=true)
-        GROUP BY symbol, ts, interval ORDER BY symbol, ts
-    """)
+    return load_table("liquidations")
 
 
 def load_dvol() -> pd.DataFrame:
-    return query(f"""
-        SELECT currency, ts, max(close) AS close
-        FROM read_parquet('{table_path('options_dvol')}', union_by_name=true)
-        GROUP BY currency, ts ORDER BY currency, ts
-    """)
+    return query(f"SELECT currency, ts, close FROM ({deduped_sql('options_dvol')}) ORDER BY currency, ts")

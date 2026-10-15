@@ -16,15 +16,16 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
 
-# Load .env (KEY=VALUE lines) so local runs pick up API keys; env wins over file.
-_env_file = REPO_ROOT / ".env"
-if _env_file.exists():
-    for _line in _env_file.read_text().splitlines():
-        _line = _line.strip()
-        if _line and not _line.startswith("#") and "=" in _line:
-            _key, _, _value = _line.partition("=")
-            if _value.strip() and not os.environ.get(_key.strip()):
-                os.environ[_key.strip()] = _value.strip()
+def load_environment() -> None:
+    """Explicit collector startup only; importing storage/analytics reads no secrets."""
+    path = REPO_ROOT / ".env"
+    if path.exists():
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, value = line.partition("=")
+                if value.strip() and not os.environ.get(key.strip()):
+                    os.environ[key.strip()] = value.strip()
 
 # Dedupe keys per table.
 TABLE_KEYS = {
@@ -51,6 +52,8 @@ def append_parquet(df: pd.DataFrame, table: str) -> int:
     keys = TABLE_KEYS[table]
     df = df.copy()
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
+    df["ingested_at"] = pd.Timestamp.now(tz="UTC")
+    df["writer"] = tag
     added = 0
     for year, chunk in df.groupby(df["ts"].dt.year):
         path = DATA_DIR / table / f"{year}-{tag}.parquet"

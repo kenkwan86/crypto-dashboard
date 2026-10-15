@@ -19,16 +19,28 @@ def rolling_z(series: pd.Series, window: int) -> pd.Series:
     """Z-score of the last value vs a rolling window (time-based, daily index)."""
     mean = series.rolling(window, min_periods=int(window * MIN_PERIODS_FRACTION)).mean()
     std = series.rolling(window, min_periods=int(window * MIN_PERIODS_FRACTION)).std()
+    std = std.where(std > 0)
     return (series - mean) / std
 
 
-def daily_panel(df: pd.DataFrame, value: str) -> pd.DataFrame:
-    """Pivot (symbol, ts, value) to a daily-indexed wide panel, ffilled max 3 days."""
-    frame = df.copy()
-    frame["ts"] = pd.to_datetime(frame["ts"], utc=True).dt.floor("D")
-    panel = frame.groupby(["ts", "symbol"])[value].last().unstack()
-    panel = panel.asfreq("D").ffill(limit=3)
-    return panel
+def daily_panel(df: pd.DataFrame, value: str, fill_days: int = 3) -> pd.DataFrame:
+    """Completed UTC days only; bounded fill, sorted observations, known membership."""
+    from analytics.universe import membership
+    if df.empty:
+        return pd.DataFrame(index=pd.DatetimeIndex([], tz='UTC', name='ts'))
+    frame = df.copy().sort_values('ts')
+    frame['ts'] = pd.to_datetime(frame['ts'], utc=True)
+    frame = frame[frame['ts'] < pd.Timestamp.now(tz='UTC').floor('D')]
+    if 'observed_at' in frame and value == 'close':
+        # A day's closing price is known with the closed 23:00 candle even if
+        # an earlier intraday candle is missing. Volume completeness is separate.
+        frame.loc[pd.to_datetime(frame['observed_at'], utc=True).dt.hour != 23, value] = float('nan')
+    frame['ts'] = frame['ts'].dt.floor('D')
+    panel = frame.groupby(['ts','symbol'])[value].last().unstack().asfreq('D')
+    if fill_days:
+        panel = panel.ffill(limit=fill_days)
+    mask, _ = membership(panel.index, panel.columns)
+    return panel.where(mask)
 
 
 def funding_zscores() -> dict[str, pd.DataFrame]:
@@ -39,33 +51,38 @@ def funding_zscores() -> dict[str, pd.DataFrame]:
 
 
 def oi_zscores() -> dict[str, object]:
-    """Daily OI panels from a single-source continuous series per coin (mixing
-    sources across time fakes jumps at the seams): Binance history where it is
-    deep enough (the backfilled top 10), Coinalyze aggregated otherwise. The
-    displayed level, the 7d change and its z-scores all come from that one
-    source, named per symbol in the "source" entry."""
-    binance_panel = daily_panel(load_open_interest_binance(), "oi_usd")
-    coinalyze_panel = daily_panel(load_open_interest_coinalyze(), "oi_usd")
+    """Freeze each coin's source at the first 90 observed daily values.
+
+    No selection using future depth; no splice between sources. Binance wins
+    only if it reaches the threshold first (or on the same day).
+    """
+    raw = {'binance': daily_panel(load_open_interest_binance(), 'oi_usd', fill_days=0),
+           'coinalyze_agg': daily_panel(load_open_interest_coinalyze(), 'oi_usd', fill_days=0)}
     series, source = {}, {}
-    for symbol in sorted(set(binance_panel.columns) | set(coinalyze_panel.columns)):
-        binance = binance_panel.get(symbol)
-        if binance is not None and binance.notna().sum() >= 90:
-            series[symbol] = binance
-            source[symbol] = "binance"
-        elif symbol in coinalyze_panel:
-            series[symbol] = coinalyze_panel[symbol]
-            source[symbol] = "coinalyze_agg"
+    symbols = sorted(set(raw['binance'].columns) | set(raw['coinalyze_agg'].columns))
+    for symbol in symbols:
+        candidates = []
+        for priority, (name, panel) in enumerate(raw.items()):
+            if symbol in panel:
+                observed = panel[symbol].dropna()
+                if len(observed) >= 90:
+                    candidates.append((observed.index[89], priority, name))
+        if not candidates:
+            continue
+        start, _, name = min(candidates)
+        values = raw[name][symbol].loc[start:].ffill(limit=3)
+        series[symbol], source[symbol] = values, name
     continuous = pd.DataFrame(series)
-    change_7d = continuous.pct_change(7)
-    return {"value": continuous, "change_7d": change_7d, "source": source} | {
-        name: change_7d.apply(lambda s: rolling_z(s, days)) for name, days in WINDOWS_DAYS.items()
+    change_7d = continuous.pct_change(7, fill_method=None)
+    return {'value': continuous, 'change_7d': change_7d, 'source': source} | {
+        name: change_7d.apply(lambda series: rolling_z(series, days)) for name, days in WINDOWS_DAYS.items()
     }
 
 
 def momentum_zscores() -> dict[str, pd.DataFrame]:
     """Daily close panel, 30d return, and z-scores of the 30d return."""
-    panel = daily_panel(load_daily_closes(), "close")
-    returns_30d = panel.pct_change(30)
+    panel = daily_panel(load_daily_closes(), "close", fill_days=0)
+    returns_30d = panel.pct_change(30, fill_method=None)
     return {"value": panel, "return_30d": returns_30d} | {
         name: returns_30d.apply(lambda s: rolling_z(s, days)) for name, days in WINDOWS_DAYS.items()
     }

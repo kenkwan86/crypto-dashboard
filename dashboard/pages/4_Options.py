@@ -39,15 +39,20 @@ if not dvol.empty:
 st.header("Implied vs realised volatility")
 st.caption("DVOL is 30-day implied vol; RV30 is 30-day realised vol from hourly candles. "
            f"Spread = DVOL - RV30 on the {vol.DEFAULT_ESTIMATOR} estimator; the percentile "
-           "is a full-history rank, so a high percentile means options are historically rich.")
+           "is a trailing-year rank, so a high percentile means options are historically rich.")
 
 spread_history = cached_vol_spread()
 if spread_history.empty:
     st.info("Not enough overlapping DVOL / OHLCV history yet.")
 else:
-    latest_vol = spread_history.groupby("currency", as_index=False).last()
+    latest_vol = spread_history.sort_values('ts').drop_duplicates('currency', keep='last')
+    now = pd.Timestamp.now(tz='UTC')
+    latest_vol = latest_vol[(latest_vol['ts'] >= now - pd.Timedelta(hours=24)) & (latest_vol['ts'] <= now)]
+    if latest_vol.empty:
+        st.info('No fresh volatility spread observations. Historical chart remains below.')
     for _, row in latest_vol.iterrows():
         st.subheader(row["currency"])
+        st.caption(f"Observed {row['ts']:%Y-%m-%d %H:%M UTC}")
         cols = st.columns(5)
         cols[0].metric("DVOL (implied)", f"{row['dvol']:.1f}")
         cols[1].metric("RV30 close-to-close", f"{row['rv30_close_to_close']:.1f}")
@@ -73,11 +78,13 @@ else:
 
 term = shared.options_term_structure()
 if term.empty:
-    st.info("No chain snapshots yet - the collector takes one daily at 00 UTC.")
+    st.info("No usable chain snapshots yet. Collection records actual observation time.")
     st.stop()
 
 latest_ts = term["ts"].max()
-latest = term[term["ts"] == latest_ts]
+latest = term[term["ts"] == term.groupby("currency")["ts"].transform("max")]
+if latest["timestamp_quality"].eq("legacy_day_only").any():
+    st.warning("Legacy chain snapshots were labelled by day; their actual observation times are unknown.")
 st.subheader(f"Term structure and 25-delta risk reversal ({latest_ts:%Y-%m-%d} snapshot)")
 
 col1, col2 = st.columns(2)

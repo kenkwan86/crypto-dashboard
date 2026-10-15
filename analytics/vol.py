@@ -30,7 +30,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from analytics.data_access import query, table_path
+from analytics.data_access import query, deduped_sql
 
 CURRENCIES = ("BTC", "ETH")
 WINDOW_HOURS = 720  # 30 days of hourly candles
@@ -41,61 +41,39 @@ DEFAULT_ESTIMATOR = "close_to_close"
 
 
 def load_hourly_ohlcv(symbols: tuple[str, ...] = CURRENCIES) -> pd.DataFrame:
-    """Hourly high/low/close per (symbol, ts), deduped across writer files."""
-    quoted = ", ".join(f"'{s}'" for s in symbols)
-    frame = query(f"""
-        WITH deduped AS (
-            SELECT symbol, ts, exchange, max(high) AS high, min(low) AS low, max(close) AS close
-            FROM read_parquet('{table_path('ohlcv')}', union_by_name=true)
-            WHERE symbol IN ({quoted})
-            GROUP BY symbol, ts, exchange
-        )
-        SELECT symbol, ts, max(high) AS high, min(low) AS low, max(close) AS close
-        FROM deduped
-        GROUP BY symbol, ts ORDER BY symbol, ts
-    """)
-    frame["ts"] = pd.to_datetime(frame["ts"], utc=True)
-    return frame
+    frame = query(f"SELECT symbol, ts, high, low, close FROM ({deduped_sql('ohlcv')}) WHERE exchange = 'binance' ORDER BY symbol, ts")
+    return frame[frame['symbol'].isin(symbols)]
 
 
 def load_dvol_hourly(currencies: tuple[str, ...] = CURRENCIES) -> pd.DataFrame:
-    """Hourly DVOL close per (currency, ts), deduped across writer files."""
-    quoted = ", ".join(f"'{c}'" for c in currencies)
-    frame = query(f"""
-        SELECT currency, ts, max(close) AS dvol
-        FROM read_parquet('{table_path('options_dvol')}', union_by_name=true)
-        WHERE currency IN ({quoted})
-        GROUP BY currency, ts ORDER BY currency, ts
-    """)
-    frame["ts"] = pd.to_datetime(frame["ts"], utc=True)
-    return frame
+    frame = query(f"SELECT currency, ts, close AS dvol FROM ({deduped_sql('options_dvol')}) ORDER BY currency, ts")
+    return frame[frame['currency'].isin(currencies)]
 
 
 def realised_vol(candles: pd.DataFrame, window: int = WINDOW_HOURS) -> pd.DataFrame:
-    """Both annualised realised-vol estimators (in % points) for one symbol.
-
-    `candles` must be one symbol's hourly rows sorted by ts.
-    """
-    frame = candles.sort_values("ts").copy()
-    log_return = np.log(frame["close"]).diff()
-    close_to_close = log_return.rolling(window, min_periods=MIN_PERIODS).std()
-
-    # Parkinson: sigma^2 = mean(ln(h/l)^2) / (4 ln 2) per bar.
-    log_range_sq = np.log(frame["high"] / frame["low"]) ** 2
-    parkinson_var = log_range_sq.rolling(window, min_periods=MIN_PERIODS).mean() / (4 * np.log(2))
-
+    """Calendar-hour grid: gaps remain missing and never become hourly returns."""
+    columns = ['ts','close','rv30_close_to_close','rv30_parkinson']
+    if candles.empty:
+        return pd.DataFrame(columns=columns)
+    frame = candles.sort_values('ts').set_index('ts').asfreq('h')
+    valid = (frame['close'] > 0) & (frame['high'] >= frame['low']) & (frame['low'] > 0)
+    frame.loc[~valid, ['close','high','low']] = np.nan
+    log_return = np.log(frame['close']).diff()
+    span = pd.Timedelta(hours=window)
+    minimum = min(MIN_PERIODS, window)
     scale = np.sqrt(HOURS_PER_YEAR) * 100
-    frame["rv30_close_to_close"] = close_to_close * scale
-    frame["rv30_parkinson"] = np.sqrt(parkinson_var) * scale
-    return frame[["ts", "close", "rv30_close_to_close", "rv30_parkinson"]]
+    frame['rv30_close_to_close'] = log_return.rolling(span, min_periods=minimum).std() * scale
+    variance = np.log(frame['high'] / frame['low'])**2 / (4*np.log(2))
+    frame['rv30_parkinson'] = np.sqrt(variance.rolling(span, min_periods=minimum).mean()) * scale
+    return frame.reset_index()[columns]
 
 
 def vol_spread(estimator: str = DEFAULT_ESTIMATOR,
                currencies: tuple[str, ...] = CURRENCIES) -> pd.DataFrame:
     """Per (currency, ts): DVOL, both RV30 estimators, the DVOL-minus-RV spread
-    for the chosen estimator, and that spread's percentile over the full history.
+    for the chosen estimator, and that spread's percentile over the trailing year.
 
-    The percentile is a full-sample rank (0-100): 90 means the spread has been
+    The percentile is a trailing-year rank (0-100): 90 means the spread has been
     this rich or richer in only 10% of the hours on record.
     """
     if estimator not in ESTIMATORS:
@@ -114,7 +92,7 @@ def vol_spread(estimator: str = DEFAULT_ESTIMATOR,
             continue
         merged = implied.merge(realised_vol(coin), on="ts", how="inner")
         merged["spread"] = merged["dvol"] - merged[f"rv30_{estimator}"]
-        merged["spread_pct"] = merged["spread"].rank(pct=True) * 100
+        merged["spread_pct"] = merged.set_index("ts")["spread"].rolling("365D", min_periods=MIN_PERIODS).rank(pct=True).to_numpy() * 100
         parts.append(merged)
     if not parts:
         return pd.DataFrame(columns=["currency", "ts", "dvol", "rv30_close_to_close",

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from analytics.data_access import query, table_path
+from analytics.data_access import query, deduped_sql
 from collectors.common import DATA_DIR
 
 VENUES = ("binance", "bybit", "hyperliquid")
@@ -44,6 +44,8 @@ FLAT_APR_DEADBAND = 1.0
 
 def three_venue_universe() -> list[str]:
     """Bases in data/universe.parquet that carry a symbol on all three venues."""
+    if not (DATA_DIR / "universe.parquet").exists():
+        return []
     path = str(DATA_DIR / "universe.parquet").replace("\\", "/")
     frame = query(f"""
         SELECT base FROM read_parquet('{path}')
@@ -68,15 +70,10 @@ def load_venue_funding(symbols: list[str] | None = None) -> pd.DataFrame:
     in_list = ", ".join(f"'{s}'" for s in symbols)
     venue_list = ", ".join(f"'{v}'" for v in VENUES)
     return query(f"""
-        WITH deduped AS (
-            SELECT symbol, ts, exchange, max(rate) AS rate, max(interval_h) AS interval_h
-            FROM read_parquet('{table_path('funding')}', union_by_name=true)
-            WHERE symbol IN ({in_list}) AND exchange IN ({venue_list})
-            GROUP BY symbol, ts, exchange
-        )
+        WITH deduped AS ({deduped_sql('funding')})
         SELECT symbol, ts, exchange, rate * 8.0 / interval_h AS rate_8h
         FROM deduped
-        WHERE interval_h IS NOT NULL AND interval_h > 0
+        WHERE interval_h > 0 AND symbol IN ({in_list}) AND exchange IN ({venue_list})
         ORDER BY symbol, ts, exchange
     """)
 
@@ -99,8 +96,8 @@ def spread_panels(symbols: list[str] | None = None) -> dict[str, pd.DataFrame]:
         spread = venues[left] - venues[right]
         out[name] = spread
         out[f"{name}_z"] = spread.apply(
-            lambda s: (s - s.rolling(Z_WINDOW_HOURS, min_periods=Z_MIN_PERIODS).mean())
-            / s.rolling(Z_WINDOW_HOURS, min_periods=Z_MIN_PERIODS).std())
+            lambda s: (s - s.rolling("30D", min_periods=Z_MIN_PERIODS).mean())
+            / s.rolling("30D", min_periods=Z_MIN_PERIODS).std())
     return out
 
 

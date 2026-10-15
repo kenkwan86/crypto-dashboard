@@ -30,7 +30,9 @@ regime briefing from positioning data. Be specific and numbers-driven. Structure
 4. Liquidation picture - recent flush activity or its absence.
 5. Watchlist - 3-5 concrete things that would change the assessment (levels, z-score reversals).
 Plain English, no hedging boilerplate. State data gaps plainly if inputs are missing.
-State the age of each input you cite (see data_as_of), and refuse to draw any
+Lead with changes over the last completed day and week and what would invalidate the assessment.
+Use only supplied facts; gaps and excluded_coins are unavailable, never neutral.
+State the age of each input you cite (see observation timestamps and data_quality), and refuse to draw any
 conclusion from a table whose data is older than 24 hours - say so instead."""
 
 
@@ -43,64 +45,50 @@ UNITS = {
     "mark_iv": "percent (e.g. 55.2 means 55.2% IV)",
     "atm_iv": "percent",
     "total_oi": "option contracts (Deribit units), NOT USD",
+    "funding_change_1d": "change in per-8h fractional funding rate between completed UTC days",
+    "funding_change_7d": "change in per-8h fractional funding rate over seven calendar days",
+    "oi_return_1d": "fractional OI change, same source, one calendar day",
+    "oi_return_7d": "fractional OI change, same source, seven calendar days",
 }
 
 
 def build_context() -> dict:
-    from analytics.options_metrics import latest_term_structure
-    from analytics.regime import compute_regime
-    from analytics.zscores import cross_sectional_table
-    from analytics.data_access import load_dvol
-    from analytics.liquidations import daily_liquidations
-
-    regime = compute_regime()
-    table = cross_sectional_table()
-    dvol = load_dvol()
-    liquidations = daily_liquidations()
-
-    context: dict = {"generated_utc": datetime.now(timezone.utc).isoformat(timespec="minutes")}
-    context["units"] = UNITS
-    try:
-        from dashboard.shared import data_freshness
-        context["data_as_of"] = data_freshness()
-    except Exception as error:  # noqa: BLE001 - the briefing still generates without it
-        print(f"data_as_of unavailable: {str(error)[:160]}")
-    if not regime.empty:
-        weekly = regime["regime"].iloc[-90:].resample("7D").last().round(2).dropna()
-        context["regime_weekly_last_90d"] = {f"{ts:%Y-%m-%d}": v for ts, v in weekly.items()}
-        context["regime_components_latest"] = regime.iloc[-1].round(2).to_dict()
-    if not table.empty:
-        context["cross_section"] = json.loads(
-            table.round(4).reset_index().to_json(orient="records")
-        )
-    if not dvol.empty:
-        btc = dvol[dvol["currency"] == "BTC"].set_index("ts")["close"]
-        context["btc_dvol"] = {
-            "latest": round(float(btc.iloc[-1]), 1),
-            "percentile_1y": round(float((btc.iloc[-365 * 24:] < btc.iloc[-1]).mean()), 2),
-        }
-    term = latest_term_structure()
-    if not term.empty:
-        numeric = term.drop(columns=["ts"]).assign(expiry=term["expiry"].dt.strftime("%Y-%m-%d"))
-        context["options_term_structure"] = json.loads(
-            numeric.round(2).to_json(orient="records")
-        )
-    if not liquidations.empty:
-        indexed = liquidations.set_index("day").sort_index()
-        recent = indexed[indexed.index > indexed.index.max() - pd.Timedelta(days=14)]
-        daily = recent.groupby("day")[["long_usd", "short_usd"]].sum()
-        context["liquidations_daily_14d_usd"] = {
-            str(day.date()): {"long": int(row["long_usd"]), "short": int(row["short_usd"])}
-            for day, row in daily.iterrows()
-        }
-    return context
+    from analytics.snapshot import build_snapshot, briefing_facts
+    return briefing_facts(build_snapshot()) | {'units': UNITS}
 
 
 def main() -> None:
     context = build_context()
+    import math
+    def clean(value):
+        if isinstance(value, dict):
+            return {key: clean(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        if isinstance(value, float) and not math.isfinite(value):
+            return None
+        if value is pd.NaT:
+            return None
+        return value
+    context = clean(context)
     claude = shutil.which("claude")
     if not claude:
         raise SystemExit("claude CLI not found - install Claude Code")
+    previous_paths = sorted(REPORTS_DIR.glob('snapshot-*.json')) if REPORTS_DIR.exists() else []
+    if previous_paths:
+        previous = json.loads(previous_paths[-1].read_text(encoding='utf-8'))
+        current_rows = {row['symbol']: row for row in context.get('cross_section', [])}
+        previous_rows = {row['symbol']: row for row in previous.get('cross_section', [])}
+        changes = []
+        for symbol in sorted(current_rows.keys() & previous_rows.keys()):
+            row = {'symbol': symbol}
+            for key in ('funding_rate','oi_usd'):
+                current_value, previous_value = current_rows[symbol].get(key), previous_rows[symbol].get(key)
+                if isinstance(current_value, (int,float)) and isinstance(previous_value, (int,float)):
+                    if key != 'oi_usd' or current_rows[symbol].get('oi_src') == previous_rows[symbol].get('oi_src'):
+                        row[key + '_change'] = current_value - previous_value
+            changes.append(row)
+        context['since_previous_report'] = {'previous_generated_utc': previous.get('generated_utc'), 'changes': changes}
     prompt = (SYSTEM_PROMPT + "\n\nWrite the briefing from this data:\n\n"
               + json.dumps(context, default=str))
     result = subprocess.run(
@@ -116,6 +104,8 @@ def main() -> None:
     path = REPORTS_DIR / f"briefing-{datetime.now(timezone.utc):%Y-%m-%d}.md"
     path.write_text(f"# Market briefing {datetime.now(timezone.utc):%Y-%m-%d}\n\n{body}\n",
                     encoding="utf-8")
+    snapshot_path = REPORTS_DIR / f"snapshot-{datetime.now(timezone.utc):%Y-%m-%d}.json"
+    snapshot_path.write_text(json.dumps(context, default=str, allow_nan=False, indent=2), encoding='utf-8')
     print(f"saved {path} ({len(body)} chars)")
 
 

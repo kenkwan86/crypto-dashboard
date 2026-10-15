@@ -32,3 +32,15 @@ Secrets (GitHub Actions repo secrets; locally copy `.env.example` to `.env`):
   just use your Claude Code login.
 
 See `CLAUDE.md` for schemas and commands, `docs/` for system docs.
+
+## Reliability and development
+
+See `AGENTS.md` and `.agents/skills/crypto-dashboard/SKILL.md` for portable project
+guidance. Current rankings and briefings share freshness/coverage gates; Research
+and Coin Detail are available in the sidebar. New observations carry ingestion
+provenance and options retain actual capture times. Existing historical data is
+not rewritten and legacy limitations remain visible.
+
+Run `python -m unittest discover -s tests -v` for synthetic regression checks.
+Tests and analytics imports do not load local credentials. Operational collector
+entry points load their existing local environment configuration explicitly.
