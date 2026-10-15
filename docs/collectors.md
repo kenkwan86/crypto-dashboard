@@ -17,6 +17,12 @@ within its writer file, and atomically replaces via a temporary file. Readers
 reconcile complete rows across writers. These changes do not rewrite historical
 files. Do not run two simultaneous jobs using the same writer tag.
 
+Funding rows carry `kind`: `settled` (sweeps and Binance backfills, a venue's
+settlement history) or `live` (the hourly point sample of the current rate).
+When both land on one key, `collectors.common.dedupe_rows()` keeps the settled row
+whatever the write order. `collect_funding()` calls `fetch_funding_rates` once per
+venue and reuses that response for the funding-interval lookup.
+
 OHLCV refreshes the last 48 closed hours per coin, excluding candles by timestamp.
 Funding catch-up checks each coin's freshness instead of the exchange-wide maximum.
 Binance OI additionally repairs incomplete recent hourly coverage. Sweeps share a

@@ -6,7 +6,9 @@ Importing analytics no longer loads the local environment file.
 
 ## Observation reconciliation
 
-Readers select one complete row per `collectors.common.TABLE_KEYS` key. A newer
+Readers select one complete row per `collectors.common.TABLE_KEYS` key. For funding,
+a `kind = 'settled'` row first wins over a `kind = 'live'` sample at the same key
+(rows written before 2026-10-15 have no kind and rank between them). Then a newer
 `ingested_at` wins; records without that metadata rank last. Remaining ties use
 descending filename and file row number. This legacy rule is deterministic, not
 proof that one source is correct. `_legacy`, `_source_file` and `_duplicate_count`
@@ -21,9 +23,10 @@ funding schedule (1h, 2h, 4h, 8h) settles at those hours, so the filter does not
 depend on historical `interval_h` labels. Other venues and Binance live samples
 at other hours do not change the value. Before 2026-08-25 only Binance has
 history, so this keeps the series on one definition across that date. Known
-residuals: a live sample written at 00/08/16 UTC can replace the settled value
-for the same key (they share `symbol, ts, exchange`), and the per-8h scaling
-uses the stored `interval_h`, so a wrong historical label scales that row wrongly.
+residuals: rows written before 2026-10-15 carry no `kind`, so an old live sample
+that replaced a settled value at 00/08/16 UTC stays in history (new writes keep the
+settled value); and the per-8h scaling uses the stored `interval_h`, so a wrong
+historical label scales that row wrongly.
 `load_funding()` (all venues averaged per timestamp) remains for other callers;
 cross-venue work stays in `analytics/funding_basis.py`.
 Missing/nonpositive intervals are excluded. OI is never summed

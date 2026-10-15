@@ -130,7 +130,7 @@ def backfill_funding(client: httpx.Client, base: str, symbol: str, done: set[str
                 "symbol": base,
                 "ts": pd.to_datetime(df["calc_time"], unit="ms", utc=True).dt.floor("h"),
                 "rate": df["last_funding_rate"], "exchange": "binance",
-                "interval_h": df["funding_interval_hours"],
+                "interval_h": df["funding_interval_hours"], "kind": "settled",
             })
             added = append_parquet(out, "funding")
             print(f"  funding {base} {month}: +{added}")
@@ -172,7 +172,8 @@ def gap_fill_funding(base: str, ccxt_symbol: str) -> None:
             break
         for entry in history:
             rows.append({"symbol": base, "ts": pd.Timestamp(entry["timestamp"], unit="ms", tz="UTC").floor("h"),
-                         "rate": entry["fundingRate"], "exchange": "binance", "interval_h": interval_h})
+                         "rate": entry["fundingRate"], "exchange": "binance", "interval_h": interval_h,
+                         "kind": "settled"})
         if len(history) < 1000:
             break
         since = history[-1]["timestamp"] + 1

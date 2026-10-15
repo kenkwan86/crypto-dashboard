@@ -38,6 +38,23 @@ TABLE_KEYS = {
 }
 
 
+# Funding rows carry a `kind`: "settled" (a venue's settlement history) or
+# "live" (the current rate sampled at the run hour). Both can land on the same
+# key at a settlement hour; the settled value wins. Legacy rows have no kind.
+KIND_RANK = {"live": 0, "settled": 2}
+UNKNOWN_KIND_RANK = 1
+
+
+def dedupe_rows(frame: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
+    """Keep one row per key: the highest-ranked kind, then the newest row."""
+    if "kind" in frame.columns:
+        rank = frame["kind"].map(KIND_RANK).fillna(UNKNOWN_KIND_RANK)
+        frame = frame.assign(_kind_rank=rank).sort_values("_kind_rank", kind="stable")
+        frame = frame.drop_duplicates(subset=keys, keep="last").drop(columns="_kind_rank")
+        return frame.sort_index()
+    return frame.drop_duplicates(subset=keys, keep="last")
+
+
 def append_parquet(df: pd.DataFrame, table: str) -> int:
     """Append rows to data/<table>/<year>-<tag>.parquet with dedupe (within the
     tag file). Returns rows added.
@@ -63,10 +80,10 @@ def append_parquet(df: pd.DataFrame, table: str) -> int:
             existing["ts"] = pd.to_datetime(existing["ts"], utc=True)
             before = len(existing)
             merged = pd.concat([existing, chunk], ignore_index=True)
-            merged = merged.drop_duplicates(subset=keys, keep="last")
+            merged = dedupe_rows(merged, keys)
             added += len(merged) - before
         else:
-            merged = chunk.drop_duplicates(subset=keys, keep="last")
+            merged = dedupe_rows(chunk, keys)
             added += len(merged)
         merged = merged.sort_values("ts")
         # Write via temp file + replace so readers never see a half-written file.

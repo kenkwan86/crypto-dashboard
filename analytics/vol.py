@@ -107,7 +107,9 @@ def latest_spread(estimator: str = DEFAULT_ESTIMATOR,
     history = vol_spread(estimator, currencies)
     if history.empty:
         return history
-    latest = history.groupby("currency", as_index=False).last()
+    # One whole row per currency; GroupBy.last() would fill a missing value
+    # from an older row and mix hours.
+    latest = history.sort_values("ts").groupby("currency", as_index=False).tail(1).reset_index(drop=True)
     latest["reading"] = [reading(row["spread_pct"]) for _, row in latest.iterrows()]
     return latest
 
