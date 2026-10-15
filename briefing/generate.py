@@ -32,13 +32,14 @@ regime briefing from positioning data. Be specific and numbers-driven. Structure
 Plain English, no hedging boilerplate. State data gaps plainly if inputs are missing.
 Lead with changes over the last completed day and week and what would invalidate the assessment.
 Use only supplied facts; gaps and excluded_coins are unavailable, never neutral.
-State the age of each input you cite (see observation timestamps and data_quality), and refuse to draw any
-conclusion from a table whose data is older than 24 hours - say so instead."""
+State the age of each input you cite (see observation timestamps and data_quality). Completed-day metrics
+(cross-section, regime, liquidation history) are judged against the last completed UTC day: refuse to draw
+any conclusion from one whose data is older than that day - say so instead. Intraday inputs (DVOL, options
+term structure) must be no older than 24 hours."""
 
 
 UNITS = {
-    "funding": "per-8h rate (rate * 3 * 365 annualises it); each venue's stored "
-               "interval is normalised to a per-8h rate before averaging",
+    "funding": "mean of Binance 00/08/16 UTC funding samples, normalised to a per-8h rate",
     "open_interest": "USD notional; one single source per symbol (binance or "
                      "coinalyze_agg, see cross_section.oi_src) - never a mix across time",
     "liquidations": "USD per (symbol, day), one long/short pair per day",

@@ -26,10 +26,9 @@ def annotate_cross_section(table: pd.DataFrame, details: pd.DataFrame,
     universe = current_universe()
     active = set(universe['base'])
     cutoff = now.floor('D')
-    funding = da.query(f"""SELECT symbol, ts, count(DISTINCT exchange) AS venues
+    funding = da.query(f"""SELECT symbol, max(ts) AS ts
         FROM ({da.deduped_sql('funding')}) WHERE ts < TIMESTAMPTZ '{cutoff.isoformat()}'
-        AND interval_h > 0 AND isfinite(rate) GROUP BY symbol, ts
-        QUALIFY row_number() OVER (PARTITION BY symbol ORDER BY ts DESC) = 1""").set_index('symbol')
+        AND {da.binance_funding_filter()} GROUP BY symbol""").set_index('symbol')
     oi = da.query(f"""SELECT symbol, exchange, max(ts) AS ts
         FROM ({da.deduped_sql('open_interest')}) WHERE ts < TIMESTAMPTZ '{cutoff.isoformat()}'
         AND oi_usd > 0 GROUP BY symbol, exchange""")
@@ -37,25 +36,26 @@ def annotate_cross_section(table: pd.DataFrame, details: pd.DataFrame,
     closes = closes[(closes['ts'] < cutoff) & (pd.to_datetime(closes['observed_at'], utc=True).dt.hour == 23)]
     price_times = closes.groupby('symbol')['observed_at'].max()
     table['funding_observed_at'] = pd.to_datetime(funding['ts'].reindex(table.index), utc=True)
-    table['funding_venues'] = funding['venues'].reindex(table.index)
     table['price_observed_at'] = pd.to_datetime(price_times.reindex(table.index), utc=True)
     source_times = oi.set_index(['symbol','exchange'])['ts']
     table['oi_observed_at'] = pd.to_datetime([
         source_times.get((symbol, row['oi_src']), pd.NaT) for symbol, row in table.iterrows()], utc=True)
-    expected_venues = universe.set_index('base')[[f'{venue}_symbol' for venue in ('binance','bybit','hyperliquid')]].notna().sum(axis=1)
-    table['expected_funding_venues'] = expected_venues.reindex(table.index)
     table['data_status'] = 'healthy'
-    table.loc[table['funding_venues'] < table['expected_funding_venues'], 'data_status'] = 'partial venues'
+    # Completed-day metrics are fresh when observed inside the latest completed
+    # UTC day (not before cutoff - 1 day, not in the future). `*_age_h` stays the
+    # actual age for display only.
+    latest_completed_start = cutoff - pd.Timedelta(days=1)
     for metric in ('funding','oi','price'):
-        age = (now - table[f'{metric}_observed_at']).dt.total_seconds() / 3600
-        table[f'{metric}_age_h'] = age
-        table.loc[age.gt(24) | age.lt(0), 'data_status'] = 'stale'
-        table.loc[age.isna(), 'data_status'] = 'missing'
+        observed = table[f'{metric}_observed_at']
+        table[f'{metric}_age_h'] = (now - observed).dt.total_seconds() / 3600
+        table.loc[observed.lt(latest_completed_start) | observed.gt(now), 'data_status'] = 'stale'
+        table.loc[observed.isna(), 'data_status'] = 'missing'
     # Feed freshness also matters: an old completed daily value must not conceal
     # a collector that stopped this morning. OI uses the coin's selected source.
     for symbol, row in table.iterrows():
         relevant = details[(details['symbol'] == symbol) & details['expected'] & (
-            details['table'].isin(['funding','ohlcv']) |
+            ((details['table'] == 'funding') & (details['source'] == 'binance')) |
+            (details['table'] == 'ohlcv') |
             ((details['table'] == 'open_interest') & (details['source'] == row['oi_src'])))]
         if relevant.empty or not relevant['status'].eq('healthy').all():
             table.loc[symbol, 'data_status'] = 'feed incomplete'

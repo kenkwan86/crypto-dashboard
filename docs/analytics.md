@@ -13,8 +13,20 @@ proof that one source is correct. `_legacy`, `_source_file` and `_duplicate_coun
 carry provenance. Duplicate counts include identical copies. Existing parquet
 files are not migrated or rewritten by readers.
 
-Funding is normalized with each selected row's `rate * 8 / interval_h` before
-averaging venues. Missing/nonpositive intervals are excluded. OI is never summed
+Daily funding (`load_daily_funding()`, used by `funding_zscores()`) is one venue
+and one fixed set of sampling hours for all history: Binance rows at UTC hours
+00, 08 and 16 only, each normalized with `rate * 8 / interval_h`, averaged per
+`(symbol, UTC day)`; `observed_at` is the latest included row. Every Binance
+funding schedule (1h, 2h, 4h, 8h) settles at those hours, so the filter does not
+depend on historical `interval_h` labels. Other venues and Binance live samples
+at other hours do not change the value. Before 2026-08-25 only Binance has
+history, so this keeps the series on one definition across that date. Known
+residuals: a live sample written at 00/08/16 UTC can replace the settled value
+for the same key (they share `symbol, ts, exchange`), and the per-8h scaling
+uses the stored `interval_h`, so a wrong historical label scales that row wrongly.
+`load_funding()` (all venues averaged per timestamp) remains for other callers;
+cross-venue work stays in `analytics/funding_basis.py`.
+Missing/nonpositive intervals are excluded. OI is never summed
 with the Coinalyze aggregate. Each coin's analytical OI source is fixed at the
 first source to reach 90 observed daily values, preferring Binance on a tie;
 values before selection remain unavailable. This avoids selecting past sources
@@ -45,8 +57,16 @@ are 3h for hourly tables and 30h for daily options collection.
 
 `analytics/snapshot.py` joins actual completed-day input timestamps and source
 coverage onto each coin. Current rankings require active membership, required
-history, observed inputs within 24h, all expected funding venues at the selected
-hour, and healthy relevant feeds. Excluded rows keep a reason. Daily 1d/7d changes
+history, completed-day inputs, and healthy relevant feeds. A completed-day input
+(funding, OI, price) is fresh when its observation falls inside the latest
+completed UTC day (`observed_at >= now.floor('D') - 1 day`, not in the future);
+otherwise the row is `stale`. It is no longer a fixed 24h age, which marked
+every coin stale from 23:00 to 24:00 UTC. The `*_age_h` columns still show the
+actual age. Funding provenance (`funding_observed_at`) is the latest included
+Binance settlement row before the cutoff, and the funding feed check uses only
+Binance `details` rows; the `partial venues` rule and the `funding_venues` /
+`expected_funding_venues` columns were removed. Intraday inputs (DVOL, options
+term structure) keep the 24h rule in `briefing_facts`. Excluded rows keep a reason. Daily 1d/7d changes
 use exact calendar dates. A per-build query cache avoids repeated reads without
 persisting results across data updates; Streamlit caches the snapshot for 900s.
 

@@ -10,6 +10,7 @@ from dashboard import shared
 
 st.set_page_config(page_title="Regime", layout="wide")
 st.title("Composite market regime")
+shared.render_sync_status()
 
 regime = shared.regime_history()
 if regime.empty:

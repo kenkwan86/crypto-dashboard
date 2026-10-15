@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from analytics.data_access import (load_daily_closes, load_funding,
+from analytics.data_access import (load_daily_closes, load_daily_funding,
                                    load_open_interest_binance, load_open_interest_coinalyze)
 
 WINDOWS_DAYS = {"z30": 30, "z90": 90, "z365": 365}
@@ -44,8 +44,11 @@ def daily_panel(df: pd.DataFrame, value: str, fill_days: int = 3) -> pd.DataFram
 
 
 def funding_zscores() -> dict[str, pd.DataFrame]:
-    """Daily funding-rate panel and its rolling z-score panels."""
-    panel = daily_panel(load_funding(), "rate")
+    """Daily funding-rate panel and its rolling z-score panels.
+
+    Daily value = mean of Binance per-8h rates at the 00/08/16 UTC samples.
+    """
+    panel = daily_panel(load_daily_funding(), "rate")
     return {"value": panel} | {name: panel.apply(lambda s: rolling_z(s, days))
                                for name, days in WINDOWS_DAYS.items()}
 

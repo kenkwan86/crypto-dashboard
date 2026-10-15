@@ -263,13 +263,32 @@ def collect_coinalyze(universe: pd.DataFrame, now: pd.Timestamp) -> tuple[int, i
     end_s = int(now.timestamp())
     start_s = end_s - 24 * 3600
 
+    # Complete hours only: the still-forming current hour is dropped, and every whole hour
+    # without a point is stored as zero for markets that returned a valid history list, so a
+    # quiet coin looks healthy in coverage and quiet days survive daily_liquidations().
+    current = now.floor("h")
+    current_s = int(current.timestamp())
+    first_hour = pd.Timestamp(start_s, unit="s", tz="UTC").ceil("h")
+    whole_hours = pd.date_range(first_hour, current - pd.Timedelta(hours=1), freq="h")
     liq_rows = []
     for market in client.liquidation_history(list(symbol_to_base), "1hour", start_s, end_s):
         base = symbol_to_base.get(market["symbol"])
-        for point in market.get("history", []):
+        history = market.get("history")
+        if not isinstance(history, list):
+            print(f"  coinalyze: no valid liquidation history for {market.get('symbol')}, not zero-filled")
+            continue
+        seen = set()
+        for point in history:
+            if point["t"] >= current_s:
+                continue
+            seen.add(int(point["t"]))
             liq_rows.append({"symbol": base, "ts": pd.Timestamp(point["t"], unit="s", tz="UTC"),
                              "long_usd": point.get("l", 0.0), "short_usd": point.get("s", 0.0),
                              "interval": "1h"})
+        for hour in whole_hours:
+            if int(hour.timestamp()) not in seen:
+                liq_rows.append({"symbol": base, "ts": hour, "long_usd": 0.0, "short_usd": 0.0,
+                                 "interval": "1h"})
     liq_added = 0
     if liq_rows:
         df = pd.DataFrame(liq_rows).groupby(["symbol", "ts", "interval"], as_index=False)[["long_usd", "short_usd"]].sum()

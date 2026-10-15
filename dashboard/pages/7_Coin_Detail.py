@@ -12,6 +12,7 @@ from dashboard import shared
 
 st.set_page_config(page_title='Coin Detail', layout='wide')
 st.title('Coin detail')
+shared.render_sync_status()
 snapshot = shared.market_snapshot()
 table = snapshot['cross_section']
 if table.empty:

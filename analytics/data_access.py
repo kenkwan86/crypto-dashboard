@@ -90,6 +90,28 @@ def load_funding() -> pd.DataFrame:
         GROUP BY symbol, ts ORDER BY symbol, ts""")
 
 
+BINANCE_SETTLEMENT_HOURS = (0, 8, 16)
+
+
+def binance_funding_filter() -> str:
+    """Binance rows at UTC hours every funding schedule (1h/2h/4h/8h) settles at.
+
+    The hour set does not depend on stored `interval_h` labels, which sweeps
+    and gap fills assign from the current interval, not the historical one.
+    """
+    hours = ", ".join(str(hour) for hour in BINANCE_SETTLEMENT_HOURS)
+    return (f"exchange = 'binance' AND interval_h > 0 AND isfinite(rate) "
+            f"AND extract(hour FROM ts) IN ({hours})")
+
+
+def load_daily_funding() -> pd.DataFrame:
+    """Per (symbol, UTC day): mean per-8h Binance rate over the 00/08/16 samples."""
+    return query(f"""SELECT symbol, date_trunc('day', ts) AS ts,
+        avg(rate * 8.0 / interval_h) AS rate, max(ts) AS observed_at
+        FROM ({deduped_sql('funding')}) WHERE {binance_funding_filter()}
+        GROUP BY symbol, date_trunc('day', ts) ORDER BY symbol, ts""")
+
+
 def load_open_interest(exchange: str) -> pd.DataFrame:
     if exchange not in {"binance", "bybit", "hyperliquid", "coinalyze_agg"}:
         raise ValueError("Unknown OI source")
