@@ -18,6 +18,9 @@ stack, built entirely on free data sources.
 
 ## Setup
 
+Python 3.13. `requirements.txt` pins exact versions that pass the tests; upgrade
+one deliberately, run `python -m unittest discover -s tests`, then commit.
+
 ```
 pip install -r requirements.txt
 python -m collectors.universe

@@ -11,7 +11,9 @@ so a multi-hour price change cannot be annualized as a one-hour return.
 Spread percentile uses the trailing 365 days with at least 480 observations,
 not a rank against future data. >=80 is labelled rich and <=20 cheap relative to
 the trailing distribution. This describes implied versus past realized movement;
-it does not establish the profitability of an option trade.
+it does not establish the profitability of an option trade. `latest_spread()`
+returns the newest whole row per currency; a missing percentile stays missing
+rather than being filled from an older hour.
 
 ## Flush
 

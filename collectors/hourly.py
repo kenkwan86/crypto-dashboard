@@ -46,10 +46,13 @@ def sweep_candidates(table: str, exchange: str, now: pd.Timestamp) -> set[str]:
     return expected - set(good['symbol'])
 
 
-def funding_interval_map(exchange: ccxt.Exchange, symbols: list[str]) -> dict[str, float | None]:
+def funding_interval_map(exchange: ccxt.Exchange, symbols: list[str],
+                         rates: dict | None = None) -> dict[str, float | None]:
     """Per-ccxt-symbol funding interval in hours, from whatever ccxt exposes:
     the venue's fetch_funding_intervals lookup (binance) and, as a fallback,
-    the interval field on fetch_funding_rates entries (bybit, hyperliquid)."""
+    the interval field on fetch_funding_rates entries (bybit, hyperliquid).
+    Pass `rates` (a fetch_funding_rates result) to reuse it instead of
+    calling fetch_funding_rates again."""
     interval_map: dict[str, float | None] = {}
     if exchange.has.get("fetchFundingIntervals"):
         try:
@@ -58,7 +61,9 @@ def funding_interval_map(exchange: ccxt.Exchange, symbols: list[str]) -> dict[st
         except Exception as error:
             print(f"  funding intervals {exchange.id}: {error}")
     try:
-        for symbol, entry in exchange.fetch_funding_rates(symbols).items():
+        if rates is None:
+            rates = exchange.fetch_funding_rates(symbols)
+        for symbol, entry in rates.items():
             hours = _interval_hours(entry.get("interval"))
             if hours is not None:
                 interval_map[symbol] = hours
@@ -104,23 +109,25 @@ def collect_funding(exchanges: dict[str, ccxt.Exchange], universe: pd.DataFrame,
     for name, exchange in exchanges.items():
         symbol_col = f"{name}_symbol"
         wanted = {s: b for s, b in zip(universe[symbol_col], universe["base"]) if pd.notna(s)}
-        # Binance's fetch_funding_rates response (premiumIndex) carries no funding
-        # interval; the per-symbol fundingIntervalHours lives on
-        # fetch_funding_intervals (one call for the whole venue) instead.
-        interval_map = funding_interval_map(exchange, list(wanted))
         try:
             funding = exchange.fetch_funding_rates(list(wanted))
         except Exception as error:
             print(f"  funding {name}: {error}")
             continue
+        # Binance's fetch_funding_rates response (premiumIndex) carries no funding
+        # interval; the per-symbol fundingIntervalHours lives on
+        # fetch_funding_intervals (one call for the whole venue) instead.
+        # The rates fetched above are reused, so the venue is asked once.
+        interval_map = funding_interval_map(exchange, list(wanted), rates=funding)
         for symbol, entry in funding.items():
             rate = entry.get("fundingRate")
             if symbol in wanted and rate is not None:
                 interval_h = _interval_hours(entry.get("interval"))
                 if interval_h is None:
                     interval_h = interval_map.get(symbol)
+                # A live sample is the venue's current rate, not a settled one.
                 rows.append({"symbol": wanted[symbol], "ts": now, "rate": rate,
-                             "exchange": name, "interval_h": interval_h})
+                             "exchange": name, "interval_h": interval_h, "kind": "live"})
     return append_parquet(pd.DataFrame(rows), "funding")
 
 
@@ -164,7 +171,7 @@ def sweep_funding(exchanges: dict[str, ccxt.Exchange], universe: pd.DataFrame, n
                         rows.append({"symbol": wanted[symbol],
                                      "ts": pd.Timestamp(entry["timestamp"], unit="ms", tz="UTC").floor("h"),
                                      "rate": entry["fundingRate"], "exchange": name,
-                                     "interval_h": interval_map.get(symbol)})
+                                     "interval_h": interval_map.get(symbol), "kind": "settled"})
                     if len(history) < 1000:
                         break
                     cursor = history[-1]["timestamp"] + 1

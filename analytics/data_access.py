@@ -6,11 +6,11 @@ import pandas as pd
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from collectors.common import DATA_DIR, TABLE_KEYS
+from collectors.common import DATA_DIR, KIND_RANK, TABLE_KEYS, UNKNOWN_KIND_RANK
 
 SCHEMAS = {
     "ohlcv": "symbol VARCHAR, ts TIMESTAMPTZ, exchange VARCHAR, open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume DOUBLE",
-    "funding": "symbol VARCHAR, ts TIMESTAMPTZ, exchange VARCHAR, rate DOUBLE, interval_h DOUBLE",
+    "funding": "symbol VARCHAR, ts TIMESTAMPTZ, exchange VARCHAR, rate DOUBLE, interval_h DOUBLE, kind VARCHAR",
     "open_interest": "symbol VARCHAR, ts TIMESTAMPTZ, exchange VARCHAR, oi_usd DOUBLE",
     "liquidations": "symbol VARCHAR, ts TIMESTAMPTZ, interval VARCHAR, long_usd DOUBLE, short_usd DOUBLE",
     "options_dvol": "currency VARCHAR, ts TIMESTAMPTZ, open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE",
@@ -56,6 +56,9 @@ def table_exists(table: str) -> bool:
 def deduped_sql(table: str) -> str:
     """Newest ingestion wins as a whole row; legacy ties use file then row.
 
+    Funding first prefers a settled row over a live sample at the same key
+    (collectors.common.KIND_RANK); rows without a kind rank in between.
+
     Legacy ordering is deterministic, not evidence of accuracy. Duplicate counts
     include identical copies; original files remain available for conflict audit.
     """
@@ -70,12 +73,16 @@ def deduped_sql(table: str) -> str:
         extra.append("NULL::TIMESTAMPTZ AS ingested_at")
     projected = f"SELECT *{', ' + ', '.join(extra) if extra else ''} FROM {raw}"
     keys = ", ".join(TABLE_KEYS[table])
+    kind_order = ""
+    if table == "funding":
+        ranks = " ".join(f"WHEN '{kind}' THEN {rank}" for kind, rank in KIND_RANK.items())
+        kind_order = f"CASE kind {ranks} ELSE {UNKNOWN_KIND_RANK} END DESC, "
     return f"""SELECT * EXCLUDE(filename, file_row_number),
         filename AS _source_file, ingested_at IS NULL AS _legacy,
         count(*) OVER (PARTITION BY {keys}) - 1 AS _duplicate_count
         FROM ({projected})
         QUALIFY row_number() OVER (PARTITION BY {keys}
-            ORDER BY TRY_CAST(ingested_at AS TIMESTAMPTZ) DESC NULLS LAST,
+            ORDER BY {kind_order}TRY_CAST(ingested_at AS TIMESTAMPTZ) DESC NULLS LAST,
                      filename DESC, file_row_number DESC) = 1"""
 
 
