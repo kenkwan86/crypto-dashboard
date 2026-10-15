@@ -10,7 +10,7 @@ from __future__ import annotations
 import pandas as pd
 import ccxt
 
-from collectors.common import DATA_DIR
+from collectors.common import load_environment, DATA_DIR
 
 UNIVERSE_SIZE = 50
 # Bases that are stablecoins or exchange-wrapped duplicates, not tradeable theses.
@@ -59,11 +59,33 @@ def build_universe() -> pd.DataFrame:
     return df
 
 
+def record_universe(frame: pd.DataFrame, now: pd.Timestamp | None = None) -> None:
+    """Record membership from when it is observed, never backdate a new universe."""
+    now = pd.Timestamp.now(tz='UTC') if now is None else now
+    directory = DATA_DIR / 'universe_history'
+    directory.mkdir(parents=True, exist_ok=True)
+    # Separate immutable observations; no modification of past membership.
+    previous = sorted(directory.glob('*.parquet'))
+    if previous:
+        old = pd.read_parquet(previous[-1]).drop(columns=['effective_at'])
+        fields = ['base','binance_symbol','bybit_symbol','hyperliquid_symbol']
+        if old[fields].sort_values('base').reset_index(drop=True).equals(frame[fields].sort_values('base').reset_index(drop=True)):
+            return
+    path = directory / (now.strftime('%Y%m%dT%H%M%S%fZ') + '.parquet')
+    temporary = path.with_suffix('.tmp')
+    frame.assign(effective_at=now).to_parquet(temporary, index=False)
+    temporary.replace(path)
+
+
 def main() -> None:
+    load_environment()
     df = build_universe()
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     path = DATA_DIR / "universe.parquet"
-    df.to_parquet(path, index=False)
+    temporary = path.with_suffix(".tmp")
+    df.to_parquet(temporary, index=False)
+    temporary.replace(path)
+    record_universe(df)
     listed = df[["bybit_symbol", "hyperliquid_symbol"]].notna().sum()
     print(f"universe: {len(df)} bases -> {path}")
     print(f"  bybit listed: {listed['bybit_symbol']}, hyperliquid listed: {listed['hyperliquid_symbol']}")

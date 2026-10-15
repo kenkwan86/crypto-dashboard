@@ -57,8 +57,8 @@ st.plotly_chart(figure, use_container_width=True)
 
 st.header("Liquidation-flush trigger (hourly)")
 st.caption(
-    f"Hourly liquidations divided by the same coin's open interest, z-scored over the full "
-    f"hourly history available per coin (min {flush.MIN_HOURS}h); a flush is z >= {flush.FLUSH_Z}. "
+    f"Hourly liquidations divided by the same coin's open interest, z-scored against the prior 30-day "
+    f"history per coin, excluding the event itself (min {flush.MIN_HOURS}h); a flush is z >= {flush.FLUSH_Z}. "
     "Long flush = longs stopped out (forced selling); short flush = shorts squeezed (forced buying)."
 )
 
@@ -115,7 +115,7 @@ else:
     if base and long_side:
         st.subheader("Falsifier: do flush hours precede positive 24h returns?")
         st.warning(
-            "PRELIMINARY - the hourly liquidation history is under two weeks and flush hours "
+            "PRELIMINARY - events use a prior-only baseline, but flush hours "
             "cluster inside the same market-wide cascades, so these events are nowhere near "
             "independent. Treat as a sanity check, not evidence."
         )

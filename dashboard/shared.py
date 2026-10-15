@@ -29,48 +29,29 @@ TABLES = ("ohlcv", "funding", "open_interest", "liquidations", "options_dvol", "
 
 @st.cache_data(ttl=CACHE_TTL_S)
 def data_freshness() -> dict[str, dict]:
-    """Max ts per table straight from the parquet globs, plus its age in hours."""
-    import pandas as pd
-
-    from analytics.data_access import query, table_exists, table_path
-
-    now = pd.Timestamp.now(tz="UTC")
-    out: dict[str, dict] = {}
-    for table in TABLES:
-        if not table_exists(table):
-            out[table] = {"max_ts": None, "age_hours": None}
-            continue
-        max_ts = query(f"SELECT max(ts) AS max_ts FROM read_parquet('{table_path(table)}', union_by_name=true)")["max_ts"].iloc[0]
-        if max_ts is None or pd.isna(max_ts):
-            out[table] = {"max_ts": None, "age_hours": None}
-            continue
-        max_ts = pd.Timestamp(max_ts)
-        out[table] = {"max_ts": str(max_ts),
-                      "age_hours": round((now - max_ts).total_seconds() / 3600, 1)}
-    return out
+    return market_snapshot()['health']
 
 
 def render_freshness() -> None:
-    """Caption with every table's max ts and age; st.error once a table is stale."""
-    lines, errors = [], []
-    for table, info in data_freshness().items():
-        if info["age_hours"] is None:
-            lines.append(f"{table}: no data")
-            continue
-        lines.append(f"{table} {info['max_ts']} ({info['age_hours']}h old)")
-        limit = STALE_ERROR_HOURS.get(table)
-        if limit is not None and info["age_hours"] > limit:
-            errors.append(f"{table} data is {info['age_hours']}h old (> {limit}h) - shown numbers may be stale")
-    st.caption("Data as of: " + " | ".join(lines))
-    for error in errors:
-        st.error(error)
+    snapshot = market_snapshot()
+    health = snapshot['health']
+    healthy = sum(row['healthy'] for row in health.values())
+    expected = sum(row['expected'] for row in health.values())
+    st.caption(f"Data checked {snapshot['generated_at']:%Y-%m-%d %H:%M UTC} · {healthy}/{expected} expected coin/source feeds fresh")
+    unhealthy = [name for name, info in health.items() if info['status'] != 'healthy']
+    if unhealthy:
+        st.warning('Coverage needs attention: ' + ', '.join(unhealthy) + '. Current rankings exclude unusable inputs.')
+    with st.expander('Inspect data age, coverage and sources'):
+        details = snapshot['coverage'].copy()
+        st.dataframe(details[['table','symbol','source','status','observed_at','age_h','duplicate_rows']], hide_index=True, use_container_width=True)
+        st.caption('Inactive means outside the current universe. Duplicate rows include identical copies; legacy timestamp precision is not recoverable.')
+    for name, reason in snapshot['gaps'].items():
+        st.info(f'{name}: {reason}')
 
 
 @st.cache_data(ttl=CACHE_TTL_S)
 def cross_sectional_table() -> pd.DataFrame:
-    from analytics.zscores import cross_sectional_table
-
-    return cross_sectional_table()
+    return market_snapshot()['cross_section']
 
 
 @st.cache_data(ttl=CACHE_TTL_S)
@@ -132,3 +113,9 @@ def options_term_structure() -> pd.DataFrame:
     from analytics.options_metrics import chain_metrics
 
     return chain_metrics()
+
+
+@st.cache_data(ttl=CACHE_TTL_S)
+def market_snapshot() -> dict:
+    from analytics.snapshot import build_snapshot
+    return build_snapshot()

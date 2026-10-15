@@ -23,7 +23,7 @@ from datetime import date, timedelta
 import httpx
 import pandas as pd
 
-from collectors.common import DATA_DIR, append_parquet
+from collectors.common import load_environment, DATA_DIR, append_parquet
 
 BASE_URL = "https://data.binance.vision/data/futures/um"
 START = date(2021, 1, 1)
@@ -207,6 +207,7 @@ def backfill_metrics(client: httpx.Client, base: str, symbol: str, done: set[str
 
 
 def main() -> None:
+    load_environment()
     if len(sys.argv) < 2 or sys.argv[1] not in {"klines", "funding", "metrics"}:
         raise SystemExit(__doc__)
     dataset = sys.argv[1]

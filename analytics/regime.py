@@ -41,6 +41,7 @@ def compute_regime() -> pd.DataFrame:
     breadth = (breadth_pct - 0.5) * 4  # 0%..100% -> -2..+2
 
     dvol = load_dvol()
+    dvol = dvol[dvol["ts"] < pd.Timestamp.now(tz="UTC").floor("D")]
     btc_dvol = (dvol[dvol["currency"] == "BTC"].set_index("ts")["close"]
                 .groupby(lambda ts: ts.floor("D")).last())
     dvol_rank = btc_dvol.rolling(365, min_periods=180).rank(pct=True)
@@ -52,6 +53,9 @@ def compute_regime() -> pd.DataFrame:
     }).clip(-3, 3)
     component_names = ["funding_z", "funding_pct", "oi_z", "momentum_z", "breadth", "dvol_pct"]
     components["regime"] = components[component_names].mean(axis=1, skipna=True)
+    from analytics.universe import membership
+    _, recorded = membership(components.index, closes.columns)
+    components["universe_recorded"] = recorded
     components["n_components"] = components[component_names].notna().sum(axis=1)
     return components.dropna(subset=["regime"])
 

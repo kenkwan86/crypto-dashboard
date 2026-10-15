@@ -1,27 +1,8 @@
-"""Turn the composite regime score into a sizing input.
-
-`analytics/regime.py` gives a daily composite back to 2021. This module asks
-the only question that makes it tradable: what did the next 7 and 30 days
-actually do from each level of the score?
-
-Buckets are **quintiles of the composite over the whole history** (5 buckets,
-equal counts by construction - stated here because a fixed-cutoff scheme would
-put almost nothing in the extremes). Bucket 1 = coldest/most washed-out,
-bucket 5 = hottest/most crowded.
-
-Two forward returns per date: BTC, and the equal-weight average of every coin
-with a close on both ends of the window ("universe"). The count of contributing
-coins is carried per date and reported per bucket, because early history has
-severe survivorship bias - 2021 has a handful of coins, 2026 has ~60.
-
-The OI leg of the composite comes from `analytics.zscores.oi_zscores()`, which
-picks one fixed source per coin (Binance where deep enough, Coinalyze
-aggregated otherwise) and reports it in its "source" map; no other OI loader is
-used here.
-
-Run: python -m analytics.regime_returns
+"""Descriptive forward returns using prior-history regime quintile boundaries.
+The first 365 valid scores form a warmup. Prices require actual daily closing
+candles at both endpoints. Unknown historical universe membership and legacy
+availability times remain explicit limitations, not inferred history.
 """
-
 from __future__ import annotations
 
 import pandas as pd
@@ -39,14 +20,25 @@ MIN_OBS_PER_BUCKET = 30
 THIN_UNIVERSE_COINS = 10
 
 
+def past_only_buckets(scores: pd.Series, min_history: int = 365) -> pd.Series:
+    """Classify against prior observations only; ties deterministically go colder."""
+    values = scores.sort_index()
+    cuts = pd.DataFrame({q: values.expanding(min_periods=min_history).quantile(q).shift(1)
+                         for q in (0.2,0.4,0.6,0.8)})
+    bucket = 1 + cuts.lt(values, axis=0).sum(axis=1)
+    result = bucket.map(lambda value: f'{value}/{N_BUCKETS}').astype('string')
+    return result.where(cuts.notna().all(axis=1) & values.notna()).reindex(scores.index)
+
+
 def forward_return_frame() -> pd.DataFrame:
     """Per-date: regime score, bucket, contributing coin count, forward returns."""
     regime = compute_regime()
-    closes = daily_panel(load_daily_closes(), "close")
+    closes = daily_panel(load_daily_closes(), "close", fill_days=0)
 
     frame = pd.DataFrame(index=regime.index)
     frame["regime"] = regime["regime"]
     frame["n_components"] = regime["n_components"]
+    frame["universe_recorded"] = regime.get("universe_recorded", False)
 
     btc = closes["BTC"].reindex(frame.index) if "BTC" in closes.columns else None
     for horizon in HORIZONS:
@@ -55,10 +47,10 @@ def forward_return_frame() -> pd.DataFrame:
         frame[f"n_coins_{horizon}d"] = forward.notna().sum(axis=1)
         frame[f"universe_fwd_{horizon}d"] = forward.mean(axis=1, skipna=True)
         if btc is not None:
-            frame[f"btc_fwd_{horizon}d"] = (btc.shift(-horizon) / btc - 1)
+            frame[f"btc_fwd_{horizon}d"] = (closes["BTC"].shift(-horizon) / closes["BTC"] - 1).reindex(frame.index)
 
     labels = [f"{i}/{N_BUCKETS}" for i in range(1, N_BUCKETS + 1)]
-    frame["bucket"] = pd.qcut(frame["regime"], N_BUCKETS, labels=labels)
+    frame['bucket'] = past_only_buckets(frame['regime'])
     return frame
 
 
@@ -75,6 +67,7 @@ def bucket_table(frame: pd.DataFrame | None = None) -> pd.DataFrame:
             "n_days": len(group),
             "avg_coins": group[f"n_coins_{HORIZONS[0]}d"].mean(),
             "avg_components": group["n_components"].mean(),
+            "recorded_universe_days": int(group.get("universe_recorded", pd.Series(False, index=group.index)).sum()),
         }
         for horizon in HORIZONS:
             for who in ("btc", "universe"):
@@ -88,7 +81,7 @@ def bucket_table(frame: pd.DataFrame | None = None) -> pd.DataFrame:
                 row[f"{prefix}_med_%"] = series.median() * 100 if len(series) else float("nan")
                 row[f"{prefix}_p75_%"] = series.quantile(0.75) * 100 if len(series) else float("nan")
         rows.append(row)
-    return pd.DataFrame(rows).set_index("bucket")
+    return pd.DataFrame(rows).set_index("bucket") if rows else pd.DataFrame()
 
 
 def is_flat(table: pd.DataFrame, column: str = "btc_30d_med_%", spread_pct: float = 5.0) -> bool:
@@ -107,9 +100,11 @@ def current_reading(frame: pd.DataFrame | None = None,
         frame = forward_return_frame()
     if table is None:
         table = bucket_table(frame)
+    if frame.empty:
+        return {"line": "No completed daily regime observations", "bucket": "unavailable", "flat": True}
     latest = frame.iloc[-1]
     bucket = latest["bucket"]
-    row = table.loc[bucket] if bucket in table.index else None
+    row = table.loc[bucket] if pd.notna(bucket) and bucket in table.index else None
     reading = {
         "ts": frame.index[-1],
         "regime": float(latest["regime"]),
@@ -140,7 +135,7 @@ def main() -> None:
     print(f"OI source map: {len(sources)} coins, "
           f"{sum(1 for v in sources.values() if v == 'binance')} binance / "
           f"{sum(1 for v in sources.values() if v != 'binance')} coinalyze_agg")
-    print(f"buckets: {N_BUCKETS} quintiles of the composite over the full history\n")
+    print(f"buckets: {N_BUCKETS} quintile boundaries fitted to prior history\n")
 
     counts = ["n_days", "avg_coins", "avg_components", "regime_lo", "regime_hi"]
     print("Regime buckets (score range, sample size)")

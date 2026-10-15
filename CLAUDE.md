@@ -60,3 +60,19 @@ Prefer the helpers in `analytics/data_access.py`.
 - The GitHub Actions workflows commit data; local work should `git pull` before running collectors to avoid conflicts.
 
 System docs live in `docs/`, one file per system.
+
+## Current reliability contracts (2026-09-11)
+
+The current behavior is documented in `docs/analytics.md`, `docs/collectors.md`,
+`docs/vol_and_flush.md` and `docs/dashboard-and-briefing.md`; those supersede older
+behavior descriptions above. Shared loaders select complete observations by
+provenance rather than independent field maxima. New chain snapshots use actual
+capture timestamps. Daily signal panels exclude forming days; OI source selection,
+flush baselines and regime bucket boundaries do not use future observations.
+Historical universe and availability limitations remain explicit.
+
+Analytics imports no longer load `.env`; operational collector entry points do
+so explicitly. Run `python -m unittest discover -s tests -v` for isolated tests.
+Homepage and briefing share a quality-gated snapshot. Research and Coin Detail
+are available in the sidebar. Existing parquet files are not migrated by this
+update; provenance and membership records begin with future collection runs.

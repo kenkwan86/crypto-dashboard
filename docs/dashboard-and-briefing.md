@@ -1,25 +1,40 @@
 # Dashboard and briefing
 
-Streamlit dashboard (dashboard/app.py + pages/) and Claude briefing generator
-(briefing/generate.py). Run the dashboard with `streamlit run dashboard/app.py`
-after `git pull` (data arrives via the hourly Actions workflow).
-Pages: overview, 1_Positioning, 2_Regime, 3_Liquidations, 4_Options, 5_Screener.
-All data loading goes through dashboard/shared.py (st.cache_data, 15 min TTL).
-Briefings run weekly via .github/workflows/weekly-briefing.yml (Sunday 06:30 UTC)
-or manually; reports land in briefing/reports/.
+Start with `streamlit run dashboard/app.py` from the repository root.
+On Windows, double-click `dashboard.bat` to open the same app using local data.
+The launcher does not pull or rebase Git history. Sync incoming GitHub data
+separately after checking local edits.
+
+The homepage presents data coverage, daily regime components, 1d/7d changes and
+positioning worth investigating. Current rankings exclude inactive, stale,
+incompletely covered and insufficient-history coins. An expander explains each
+exclusion. Daily metrics use completed UTC days rather than forming daily bars.
+
+The sidebar retains Positioning, Regime, Liquidations, Options and Screener and
+adds Research and Coin Detail. Research contains the retrospective bucket table
+with explicit limitations. Coin Detail brings price, funding, the selected OI
+source, liquidation history and per-feed observation ages into one view.
+Screener and funding basis default to usable/current observations; an option
+allows inspecting excluded rows. Historical plots remain visible with warnings.
+
+`dashboard/shared.py` caches the shared snapshot for 900 seconds. Its coverage
+expander shows each expected coin/source feed, distinguishing inactive historical
+series from missing or stale current ones. A table's newest timestamp no longer
+stands in for every constituent's freshness.
 
 ## Briefing
 
-briefing/generate.py builds a compact JSON context (regime history, cross-
-sectional table, DVOL percentile, term structure, 14d liquidations) and pipes
-it to headless Claude Code (`claude -p --model sonnet`), so it runs on the
-user's Claude subscription - no API key. Missing inputs are omitted from the
-context; the prompt tells the model to state gaps. Locally it uses the Claude
-Code login; the workflow needs the CLAUDE_CODE_OAUTH_TOKEN repo secret
-(generate once with `claude setup-token`).
+`python -m briefing.generate` still uses the existing authenticated model CLI.
+`analytics/snapshot.py` supplies the same facts used on the homepage. It removes
+stale or invalid current observations before model invocation and carries units,
+observation timestamps, source labels and exclusion reasons. Legacy options
+whose actual capture time is unknown are omitted from current commentary.
 
-## Conventions
+The prompt emphasizes changes and invalidation conditions. After a successful
+report, a machine-readable `snapshot-YYYY-MM-DD.json` is saved beside the Markdown
+report. The next report compares shared usable coins against that snapshot;
+OI changes are compared only when source labels match. This history starts with
+the first new successful report, not by inferring facts from old prose.
 
-Every page inserts the repo root into sys.path before imports (Streamlit runs
-pages as scripts). Charts use template="plotly_dark"; green #22c55e = bullish /
-shorts, red #ef4444 = bearish / longs liquidated.
+Reports remain in `briefing/reports/`. No provider settings or credentials are
+changed by the analytics update.

@@ -11,12 +11,13 @@ from __future__ import annotations
 import pandas as pd
 
 from collectors.coinalyze_client import CoinalyzeClient
-from collectors.common import DATA_DIR, append_parquet
+from collectors.common import load_environment, DATA_DIR, append_parquet
 
 START = pd.Timestamp("2021-01-01", tz="UTC")
 
 
 def main() -> None:
+    load_environment()
     universe = pd.read_parquet(DATA_DIR / "universe.parquet")
     client = CoinalyzeClient()
     symbol_to_base = client.perp_symbols_for_bases(set(universe["base"]))

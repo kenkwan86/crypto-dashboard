@@ -53,7 +53,9 @@ def _aligned_panels() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """funding z90, OI-change z90 and the close panel on one index/column set."""
     funding = funding_zscores()["z90"]
     oi = oi_zscores()["z90"]
-    closes = momentum_zscores()["value"]
+    from analytics.data_access import load_daily_closes
+    from analytics.zscores import daily_panel
+    closes = daily_panel(load_daily_closes(), "close", fill_days=0)
     columns = sorted(set(funding.columns) & set(oi.columns))
     index = funding.index.union(oi.index)
     return (funding.reindex(index=index, columns=columns),

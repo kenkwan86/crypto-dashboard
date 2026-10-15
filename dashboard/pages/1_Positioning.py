@@ -18,6 +18,9 @@ funding = shared.funding_panels()
 oi = shared.oi_panels()
 
 symbols = sorted(funding["value"].columns)
+if not symbols:
+    st.info('No completed daily funding observations yet.')
+    st.stop()
 col_coin, col_lookback = st.columns([4, 1])
 with col_coin:
     symbol = st.selectbox("Coin", symbols, index=symbols.index("BTC") if "BTC" in symbols else 0)
@@ -46,13 +49,13 @@ with col1:
 
 with col2:
     figure = go.Figure()
-    figure.add_scatter(x=oi["value"].index, y=oi["value"][symbol] / 1e6, name="OI", line={"color": "#3b82f6"})
+    figure.add_scatter(x=oi["value"].index, y=oi["value"].get(symbol, pd.Series(index=oi["value"].index, dtype=float)) / 1e6, name="OI", line={"color": "#3b82f6"})
     figure.update_layout(title=f"{symbol} open interest ($M, source: {oi_source.get(symbol, 'n/a')})",
                          height=350, template="plotly_dark")
     st.plotly_chart(figure, use_container_width=True)
 
     figure = go.Figure()
-    figure.add_scatter(x=oi["z90"].index, y=oi["z90"][symbol], name="OI change z90", line={"color": "#a855f7"})
+    figure.add_scatter(x=oi["z90"].index, y=oi["z90"].get(symbol, pd.Series(index=oi["z90"].index, dtype=float)), name="OI change z90", line={"color": "#a855f7"})
     figure.add_hline(y=2, line_dash="dot", line_color="#ef4444")
     figure.add_hline(y=-2, line_dash="dot", line_color="#22c55e")
     figure.update_layout(title=f"{symbol} 7d OI-change z-score (90d)", height=300, template="plotly_dark")
@@ -69,6 +72,12 @@ basis = shared.funding_basis()
 if basis.empty:
     st.info("No overlapping three-venue funding rows yet.")
 else:
+    include_stale = st.checkbox('Include stale funding spreads', value=False)
+    if not include_stale:
+        basis = basis[~basis['stale']]
+    if basis.empty:
+        st.info('No fresh funding spreads. Enable the option above to inspect older observations.')
+        st.stop()
     basis_columns = ["binance_apr_%", "bybit_apr_%", "hyperliquid_apr_%",
                      "binance_hyperliquid_apr_%", "binance_hyperliquid_z", "binance_hyperliquid_paying",
                      "binance_bybit_apr_%", "binance_bybit_z", "binance_bybit_paying", "age_h"]

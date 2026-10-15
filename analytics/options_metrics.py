@@ -12,20 +12,13 @@ import math
 import numpy as np
 import pandas as pd
 
-from analytics.data_access import query, table_path
+from analytics.data_access import query, deduped_sql
 
 MIN_EXPIRY_DAYS = 2  # ignore expiries closer than this: IV is noise there
 
 
 def load_chain() -> pd.DataFrame:
-    df = query(f"""
-        SELECT instrument, ts, max(currency) AS currency, max(expiry) AS expiry,
-               max(strike) AS strike, max(option_type) AS option_type,
-               max(mark_iv) AS mark_iv, max(open_interest) AS open_interest,
-               max(underlying_price) AS underlying_price, max(volume) AS volume
-        FROM read_parquet('{table_path('options_chain')}')
-        GROUP BY instrument, ts
-    """)
+    df = query(f"SELECT * FROM ({deduped_sql('options_chain')})")
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
     df["expiry_ts"] = pd.to_datetime(df["expiry"], format="%d%b%y", utc=True) + pd.Timedelta(hours=8)
     df["tau_years"] = (df["expiry_ts"] - df["ts"]).dt.total_seconds() / (365 * 24 * 3600)
@@ -57,6 +50,10 @@ def chain_metrics() -> pd.DataFrame:
         if len(calls) < 3 or len(puts) < 3:
             continue
         atm_row = group.iloc[(group["strike"] - group["underlying_price"]).abs().argsort().iloc[0]]
+        calls = calls[np.isfinite(calls['delta'])]
+        puts = puts[np.isfinite(puts['delta'])]
+        if calls.empty or puts.empty or not (calls['delta'].min() <= 0.25 <= calls['delta'].max()) or not (puts['delta'].min() <= -0.25 <= puts['delta'].max()):
+            continue
         call_25 = np.interp(0.25, calls["delta"], calls["mark_iv"])
         put_25 = np.interp(-0.25, puts["delta"], puts["mark_iv"])
         rows.append({
@@ -64,15 +61,16 @@ def chain_metrics() -> pd.DataFrame:
             "days_to_expiry": (expiry - ts).total_seconds() / 86400,
             "atm_iv": atm_row["mark_iv"], "call25_iv": call_25, "put25_iv": put_25,
             "rr25": call_25 - put_25, "total_oi": group["open_interest"].sum(),
+            "timestamp_quality": "legacy_day_only" if group["_legacy"].any() else "observed",
         })
-    return pd.DataFrame(rows).sort_values(["ts", "currency", "days_to_expiry"])
+    return pd.DataFrame(rows).sort_values(["ts", "currency", "days_to_expiry"]) if rows else pd.DataFrame()
 
 
 def latest_term_structure() -> pd.DataFrame:
     metrics = chain_metrics()
     if metrics.empty:
         return metrics
-    latest_ts = metrics["ts"].max()
+    latest_ts = metrics.groupby("currency")["ts"].transform("max")
     return metrics[metrics["ts"] == latest_ts]
 
 

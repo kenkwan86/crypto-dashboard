@@ -16,7 +16,7 @@ import ccxt
 import httpx
 import pandas as pd
 
-from collectors.common import DATA_DIR, append_parquet, env
+from collectors.common import load_environment, DATA_DIR, append_parquet, env
 
 DERIBIT = "https://www.deribit.com/api/v2"
 
@@ -31,16 +31,19 @@ SWEEP_WINDOW = pd.Timedelta(hours=48)
 SWEEP_BUDGET_S = 600
 
 
-def newest_stored_ts(table: str, exchange: str) -> pd.Timestamp | None:
-    """Newest ts stored for (table, exchange) across all writer files."""
-    newest = None
-    for path in (DATA_DIR / table).glob("*.parquet"):
-        frame = pd.read_parquet(path, columns=["ts", "exchange"])
-        hits = frame.loc[frame["exchange"] == exchange, "ts"]
-        if not hits.empty:
-            value = pd.to_datetime(hits.max(), utc=True)
-            newest = value if newest is None or value > newest else newest
-    return newest
+
+
+def sweep_candidates(table: str, exchange: str, now: pd.Timestamp) -> set[str]:
+    from analytics.data_access import deduped_sql, query
+    if exchange not in {'binance','bybit','hyperliquid'}:
+        return set()
+    recent = query(f"SELECT symbol, max(ts) AS latest, count(DISTINCT ts) AS hours FROM ({deduped_sql(table)}) WHERE exchange = '{exchange}' AND ts >= TIMESTAMPTZ '{(now - SWEEP_WINDOW).isoformat()}' GROUP BY symbol")
+    universe = load_universe()
+    expected = set(universe.loc[universe[f'{exchange}_symbol'].notna(), 'base'])
+    good = recent[recent['latest'] >= now - SWEEP_MAX_AGE]
+    if table == 'open_interest':
+        good = good[good['hours'] >= 47]
+    return expected - set(good['symbol'])
 
 
 def funding_interval_map(exchange: ccxt.Exchange, symbols: list[str]) -> dict[str, float | None]:
@@ -75,12 +78,14 @@ def collect_ohlcv(binance: ccxt.binanceusdm, universe: pd.DataFrame) -> int:
     rows = []
     for _, coin in universe.iterrows():
         try:
-            candles = binance.fetch_ohlcv(coin["binance_symbol"], timeframe="1h", limit=6)
+            candles = binance.fetch_ohlcv(coin["binance_symbol"], timeframe="1h", limit=49)
         except Exception as error:
             print(f"  ohlcv {coin['base']}: {error}")
             continue
         # Drop the still-forming last candle.
-        for ts, o, h, l, c, v in candles[:-1]:
+        for ts, o, h, l, c, v in candles:
+            if pd.Timestamp(ts, unit="ms", tz="UTC") >= pd.Timestamp.now(tz="UTC").floor("h"):
+                continue
             rows.append({"symbol": coin["base"], "ts": pd.Timestamp(ts, unit="ms", tz="UTC"),
                          "open": o, "high": h, "low": l, "close": c, "volume": v, "exchange": "binance"})
     return append_parquet(pd.DataFrame(rows), "ohlcv")
@@ -133,8 +138,8 @@ def sweep_funding(exchanges: dict[str, ccxt.Exchange], universe: pd.DataFrame, n
     for name, exchange in exchanges.items():
         if not exchange.has.get("fetchFundingRateHistory"):
             continue
-        newest = newest_stored_ts("funding", name)
-        if newest is not None and wall_now - newest <= SWEEP_MAX_AGE:
+        needed = sweep_candidates("funding", name, wall_now)
+        if not needed:
             continue
         symbol_col = f"{name}_symbol"
         wanted = {s: b for s, b in zip(universe[symbol_col], universe["base"]) if pd.notna(s)}
@@ -143,13 +148,15 @@ def sweep_funding(exchanges: dict[str, ccxt.Exchange], universe: pd.DataFrame, n
         interval_map = funding_interval_map(exchange, list(wanted))
         rows = []
         for symbol in wanted:
+            if wanted[symbol] not in needed:
+                continue
             if time.monotonic() > deadline:
                 print(f"  funding sweep {name}: time budget reached, abandoning "
                       f"after {len(rows)} rows (re-run repairs the rest)")
                 break
             cursor = since_ms
             try:
-                while True:
+                while time.monotonic() <= deadline:
                     history = exchange.fetch_funding_rate_history(symbol, since=cursor, limit=1000)
                     if not history:
                         break
@@ -179,13 +186,15 @@ def sweep_open_interest(exchanges: dict[str, ccxt.Exchange], universe: pd.DataFr
     wall_now = pd.Timestamp.now(tz="UTC")
     if "binance" not in exchanges:
         return 0
-    newest = newest_stored_ts("open_interest", "binance")
-    if newest is not None and wall_now - newest <= SWEEP_MAX_AGE:
+    needed = sweep_candidates("open_interest", "binance", wall_now)
+    if not needed:
         return 0
     since_ms = int((now - SWEEP_WINDOW).timestamp() * 1000)
     binance = exchanges["binance"]
     rows = []
     for _, coin in universe.iterrows():
+        if coin["base"] not in needed:
+            continue
         if time.monotonic() > deadline:
             print(f"  oi sweep binance: time budget reached, abandoning after {len(rows)} rows "
                   f"(re-run repairs the rest)")
@@ -298,14 +307,14 @@ def collect_options(now: pd.Timestamp) -> tuple[int, int]:
         response = client.get(f"{DERIBIT}/public/get_book_summary_by_currency",
                               params={"currency": currency, "kind": "option"})
         response.raise_for_status()
-        snapshot_ts = now.floor("D")
+        snapshot_ts = pd.Timestamp.now(tz="UTC")
         for item in response.json()["result"]:
             name = item["instrument_name"]  # e.g. BTC-27SEP26-80000-C
             parts = name.split("-")
             if len(parts) != 4 or item.get("mark_iv") is None:
                 continue
             chain_rows.append({
-                "instrument": name, "ts": snapshot_ts, "currency": currency,
+                "instrument": name, "ts": snapshot_ts, "snapshot_day": snapshot_ts.floor("D"), "currency": currency,
                 "expiry": parts[1], "strike": float(parts[2]), "option_type": parts[3],
                 "mark_iv": item.get("mark_iv"), "open_interest": item.get("open_interest"),
                 "underlying_price": item.get("underlying_price"), "volume": item.get("volume"),
@@ -314,23 +323,22 @@ def collect_options(now: pd.Timestamp) -> tuple[int, int]:
 
 
 def options_snapshot_stale() -> bool:
-    """True when no options_chain row exists for today yet (UTC)."""
-    newest = None
-    for path in (DATA_DIR / "options_chain").glob("*.parquet"):
-        hits = pd.read_parquet(path, columns=["ts"])["ts"]
-        if not hits.empty:
-            value = pd.to_datetime(hits.max(), utc=True)
-            newest = value if newest is None or value > newest else newest
-    return newest is None or newest < pd.Timestamp.now(tz="UTC").floor("D")
+    from analytics.data_access import deduped_sql, query
+    frame = query(f"SELECT currency, max(ts) AS ts FROM ({deduped_sql('options_chain')}) GROUP BY currency")
+    today = pd.Timestamp.now(tz='UTC').floor('D')
+    return set(frame.loc[frame['ts'] >= today, 'currency']) != {'BTC','ETH'}
 
 
 def main() -> None:
+    load_environment()
     start = time.monotonic()
     # One shared sweep deadline for both catch-up sweeps, bounded from process
     # start so funding + OI sweeping together cannot overrun the 15-minute job.
     sweep_deadline = start + SWEEP_BUDGET_S
     now = pd.Timestamp.now(tz="UTC").floor("h")
     universe = load_universe()
+    from collectors.universe import record_universe
+    record_universe(universe)
     # Binance/Bybit/Deribit geo-block US IPs (GitHub-hosted runners are US-based),
     # so every source is optional: collect what this network can reach.
     candidates = {
@@ -374,8 +382,13 @@ def main() -> None:
     print(f"done in {elapsed:.0f}s at {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC")
     for table, added in counts.items():
         print(f"  {table}: FAILED" if added == "failed" else f"  {table}: +{added} rows")
-    if all(added == 0 for added in counts.values()):
-        raise SystemExit("no rows added to any table - treat as failure")
+    from analytics.health import collection_health
+    from collectors.run_status import save_run_status, collection_succeeded
+    health = collection_health()
+    healthy = any(item['healthy'] > 0 for item in health.values())
+    save_run_status(counts, health, elapsed)
+    if not collection_succeeded(counts, healthy):
+        raise SystemExit("no usable collection result; see collection health")
 
 
 if __name__ == "__main__":
