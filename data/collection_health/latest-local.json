@@ -1,6 +1,6 @@
 {
-  "observed_at": "2026-10-18T14:42:24.623696+00:00",
-  "elapsed_s": 558.8,
+  "observed_at": "2026-10-18T15:39:33.009249+00:00",
+  "elapsed_s": 384.5,
   "counts": {
     "funding_sweep": 34,
     "open_interest_sweep": 50,
@@ -18,9 +18,9 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-18 14:00:00+00:00",
-      "age_hours": 0.7062597822222223,
-      "duplicate_rows": 41887
+      "max_ts": "2026-10-18 15:00:00+00:00",
+      "age_hours": 0.6585565716666666,
+      "duplicate_rows": 42023
     },
     "open_interest": {
       "expected": 181,
@@ -29,9 +29,9 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-18 14:00:00+00:00",
-      "age_hours": 0.7062597822222223,
-      "duplicate_rows": 79002
+      "max_ts": "2026-10-18 15:00:00+00:00",
+      "age_hours": 0.6585565716666666,
+      "duplicate_rows": 79236
     },
     "ohlcv": {
       "expected": 50,
@@ -40,8 +40,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-18 13:00:00+00:00",
-      "age_hours": 1.7062597822222223,
+      "max_ts": "2026-10-18 14:00:00+00:00",
+      "age_hours": 1.6585565716666666,
       "duplicate_rows": 1164
     },
     "liquidations": {
@@ -51,9 +51,9 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-18 13:00:00+00:00",
-      "age_hours": 1.7062597822222223,
-      "duplicate_rows": 49027
+      "max_ts": "2026-10-18 14:00:00+00:00",
+      "age_hours": 1.6585565716666666,
+      "duplicate_rows": 49227
     },
     "options_dvol": {
       "expected": 2,
@@ -63,7 +63,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-18 05:00:00+00:00",
-      "age_hours": 9.70625978222222,
+      "age_hours": 10.658556571666665,
       "duplicate_rows": 2450
     },
     "options_chain": {
@@ -74,7 +74,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-18 06:20:11.160745+00:00",
-      "age_hours": 8.369826241944445,
+      "age_hours": 9.32212303138889,
       "duplicate_rows": 8988
     }
   },
