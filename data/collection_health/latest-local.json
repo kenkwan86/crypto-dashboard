@@ -1,11 +1,11 @@
 {
-  "observed_at": "2026-10-25T09:39:07.966869+00:00",
-  "elapsed_s": 362.8,
+  "observed_at": "2026-10-25T10:39:18.888261+00:00",
+  "elapsed_s": 373.9,
   "counts": {
-    "funding_sweep": 2,
+    "funding_sweep": 70,
     "open_interest_sweep": 50,
     "funding": 95,
-    "open_interest": 47,
+    "open_interest": 81,
     "liquidations": 50,
     "oi_coinalyze": 50,
     "ohlcv": 50
@@ -18,8 +18,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-25 09:00:00+00:00",
-      "age_hours": 0.6519375247222222,
+      "max_ts": "2026-10-25 10:00:00+00:00",
+      "age_hours": 0.6549982547222222,
       "duplicate_rows": 48320
     },
     "open_interest": {
@@ -29,8 +29,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-25 09:00:00+00:00",
-      "age_hours": 0.6519375247222222,
+      "max_ts": "2026-10-25 10:00:00+00:00",
+      "age_hours": 0.6549982547222222,
       "duplicate_rows": 90221
     },
     "ohlcv": {
@@ -40,8 +40,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-25 08:00:00+00:00",
-      "age_hours": 1.651937524722222,
+      "max_ts": "2026-10-25 09:00:00+00:00",
+      "age_hours": 1.6549982547222224,
       "duplicate_rows": 5964
     },
     "liquidations": {
@@ -51,8 +51,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-25 08:00:00+00:00",
-      "age_hours": 1.651937524722222,
+      "max_ts": "2026-10-25 09:00:00+00:00",
+      "age_hours": 1.6549982547222224,
       "duplicate_rows": 57202
     },
     "options_dvol": {
@@ -63,7 +63,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-25 00:00:00+00:00",
-      "age_hours": 9.651937524722221,
+      "age_hours": 10.654998254722221,
       "duplicate_rows": 2680
     },
     "options_chain": {
@@ -74,7 +74,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-25 05:09:25.369862+00:00",
-      "age_hours": 4.494890340833333,
+      "age_hours": 5.4979510708333335,
       "duplicate_rows": 8988
     }
   },
