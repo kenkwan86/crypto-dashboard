@@ -1,14 +1,14 @@
 {
-  "observed_at": "2026-10-27T06:20:05.345513+00:00",
-  "elapsed_s": 123.9,
+  "observed_at": "2026-10-27T06:28:44.503137+00:00",
+  "elapsed_s": 363.9,
   "counts": {
-    "funding_sweep": 192,
-    "open_interest_sweep": 200,
-    "funding": 95,
-    "open_interest": 81,
-    "liquidations": 0,
-    "oi_coinalyze": 0,
-    "ohlcv": 196
+    "funding_sweep": 0,
+    "open_interest_sweep": 0,
+    "funding": 0,
+    "open_interest": 0,
+    "liquidations": 200,
+    "oi_coinalyze": 200,
+    "ohlcv": 4
   },
   "coverage": {
     "funding": {
@@ -19,41 +19,41 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-27 06:00:00+00:00",
-      "age_hours": 0.3341461763888889,
-      "duplicate_rows": 49850
+      "age_hours": 0.47848468250000004,
+      "duplicate_rows": 50020
     },
     "open_interest": {
       "expected": 181,
-      "healthy": 131,
-      "stale": 50,
+      "healthy": 181,
+      "stale": 0,
       "missing": 0,
       "unknown_time": 0,
-      "status": "degraded",
+      "status": "healthy",
       "max_ts": "2026-10-27 06:00:00+00:00",
-      "age_hours": 0.3341461763888889,
-      "duplicate_rows": 92301
+      "age_hours": 0.47848468250000004,
+      "duplicate_rows": 92551
     },
     "ohlcv": {
       "expected": 50,
-      "healthy": 49,
-      "stale": 1,
+      "healthy": 50,
+      "stale": 0,
       "missing": 0,
       "unknown_time": 0,
-      "status": "degraded",
+      "status": "healthy",
       "max_ts": "2026-10-27 05:00:00+00:00",
-      "age_hours": 1.3341461763888889,
+      "age_hours": 1.4784846825,
       "duplicate_rows": 5964
     },
     "liquidations": {
       "expected": 50,
-      "healthy": 0,
-      "stale": 50,
+      "healthy": 50,
+      "stale": 0,
       "missing": 0,
       "unknown_time": 0,
-      "status": "degraded",
-      "max_ts": "2026-10-27 01:00:00+00:00",
-      "age_hours": 5.334146176388889,
-      "duplicate_rows": 59252
+      "status": "healthy",
+      "max_ts": "2026-10-27 05:00:00+00:00",
+      "age_hours": 1.4784846825,
+      "duplicate_rows": 59502
     },
     "options_dvol": {
       "expected": 2,
@@ -63,7 +63,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-27 00:00:00+00:00",
-      "age_hours": 6.334146176388889,
+      "age_hours": 6.4784846825,
       "duplicate_rows": 2736
     },
     "options_chain": {
@@ -74,9 +74,9 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-27 01:22:14.548003+00:00",
-      "age_hours": 4.963438397777778,
+      "age_hours": 5.107776903888889,
       "duplicate_rows": 8988
     }
   },
-  "status": "degraded"
+  "status": "healthy"
 }
