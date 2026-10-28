@@ -1,6 +1,6 @@
 {
-  "observed_at": "2026-10-28T02:39:26.980517+00:00",
-  "elapsed_s": 379.4,
+  "observed_at": "2026-10-28T03:39:19.788389+00:00",
+  "elapsed_s": 374.1,
   "counts": {
     "funding_sweep": 36,
     "open_interest_sweep": 50,
@@ -18,8 +18,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-28 02:00:00+00:00",
-      "age_hours": 0.6571626402777777,
+      "max_ts": "2026-10-28 03:00:00+00:00",
+      "age_hours": 0.6552180386111112,
       "duplicate_rows": 50734
     },
     "open_interest": {
@@ -29,8 +29,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-28 02:00:00+00:00",
-      "age_hours": 0.6571626402777777,
+      "max_ts": "2026-10-28 03:00:00+00:00",
+      "age_hours": 0.6552180386111112,
       "duplicate_rows": 93703
     },
     "ohlcv": {
@@ -40,8 +40,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-28 01:00:00+00:00",
-      "age_hours": 1.6571626402777777,
+      "max_ts": "2026-10-28 02:00:00+00:00",
+      "age_hours": 1.655218038611111,
       "duplicate_rows": 5964
     },
     "liquidations": {
@@ -51,8 +51,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-28 01:00:00+00:00",
-      "age_hours": 1.6571626402777777,
+      "max_ts": "2026-10-28 02:00:00+00:00",
+      "age_hours": 1.655218038611111,
       "duplicate_rows": 60552
     },
     "options_dvol": {
@@ -63,7 +63,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-28 00:00:00+00:00",
-      "age_hours": 2.657162640277778,
+      "age_hours": 3.655218038611111,
       "duplicate_rows": 2834
     },
     "options_chain": {
@@ -74,7 +74,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-28 01:43:30.106326+00:00",
-      "age_hours": 0.9321331052777778,
+      "age_hours": 1.930188503611111,
       "duplicate_rows": 8988
     }
   },
