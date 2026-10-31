@@ -1,6 +1,6 @@
 {
-  "observed_at": "2026-10-31T17:39:24.216703+00:00",
-  "elapsed_s": 377.5,
+  "observed_at": "2026-10-31T18:39:21.053198+00:00",
+  "elapsed_s": 375.4,
   "counts": {
     "funding_sweep": 34,
     "open_interest_sweep": 50,
@@ -18,8 +18,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-31 17:00:00+00:00",
-      "age_hours": 0.6561257541666666,
+      "max_ts": "2026-10-31 18:00:00+00:00",
+      "age_hours": 0.6554285661111111,
       "duplicate_rows": 53352
     },
     "open_interest": {
@@ -29,8 +29,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-31 17:00:00+00:00",
-      "age_hours": 0.6561257541666666,
+      "max_ts": "2026-10-31 18:00:00+00:00",
+      "age_hours": 0.6554285661111111,
       "duplicate_rows": 98023
     },
     "ohlcv": {
@@ -40,8 +40,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-31 16:00:00+00:00",
-      "age_hours": 1.6561257541666665,
+      "max_ts": "2026-10-31 17:00:00+00:00",
+      "age_hours": 1.6554285661111112,
       "duplicate_rows": 5964
     },
     "liquidations": {
@@ -51,8 +51,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-10-31 16:00:00+00:00",
-      "age_hours": 1.6561257541666665,
+      "max_ts": "2026-10-31 17:00:00+00:00",
+      "age_hours": 1.6554285661111112,
       "duplicate_rows": 64702
     },
     "options_dvol": {
@@ -63,7 +63,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-31 00:00:00+00:00",
-      "age_hours": 17.656125754166666,
+      "age_hours": 18.65542856611111,
       "duplicate_rows": 2928
     },
     "options_chain": {
@@ -74,7 +74,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-31 01:29:53.403955+00:00",
-      "age_hours": 16.15795798888889,
+      "age_hours": 17.157260800833335,
       "duplicate_rows": 8988
     }
   },
