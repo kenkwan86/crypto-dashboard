@@ -1,14 +1,14 @@
 {
-  "observed_at": "2026-10-31T10:07:14.686199+00:00",
-  "elapsed_s": 376.0,
+  "observed_at": "2026-10-31T10:38:49.866324+00:00",
+  "elapsed_s": 344.7,
   "counts": {
-    "funding_sweep": 301,
-    "open_interest_sweep": 300,
-    "funding": 97,
-    "open_interest": 81,
-    "liquidations": 300,
-    "oi_coinalyze": 350,
-    "ohlcv": 350
+    "funding_sweep": 0,
+    "open_interest_sweep": 0,
+    "funding": 0,
+    "open_interest": 0,
+    "liquidations": 0,
+    "oi_coinalyze": 0,
+    "ohlcv": 0
   },
   "coverage": {
     "funding": {
@@ -19,7 +19,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-31 10:00:00+00:00",
-      "age_hours": 0.12027059861111111,
+      "age_hours": 0.6468901397222222,
       "duplicate_rows": 53318
     },
     "open_interest": {
@@ -30,7 +30,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-31 10:00:00+00:00",
-      "age_hours": 0.12027059861111111,
+      "age_hours": 0.6468901397222222,
       "duplicate_rows": 97639
     },
     "ohlcv": {
@@ -41,7 +41,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-31 09:00:00+00:00",
-      "age_hours": 1.120270598611111,
+      "age_hours": 1.6468901397222222,
       "duplicate_rows": 5964
     },
     "liquidations": {
@@ -52,7 +52,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-31 09:00:00+00:00",
-      "age_hours": 1.120270598611111,
+      "age_hours": 1.6468901397222222,
       "duplicate_rows": 64352
     },
     "options_dvol": {
@@ -63,7 +63,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-31 00:00:00+00:00",
-      "age_hours": 10.120270598611112,
+      "age_hours": 10.646890139722222,
       "duplicate_rows": 2928
     },
     "options_chain": {
@@ -74,7 +74,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-10-31 01:29:53.403955+00:00",
-      "age_hours": 8.622102833333333,
+      "age_hours": 9.148722374444445,
       "duplicate_rows": 8988
     }
   },
