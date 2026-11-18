@@ -1,12 +1,12 @@
 {
-  "observed_at": "2026-11-18T15:39:27.178684+00:00",
-  "elapsed_s": 378.4,
+  "observed_at": "2026-11-18T16:39:21.100476+00:00",
+  "elapsed_s": 374.4,
   "counts": {
-    "funding_sweep": 34,
+    "funding_sweep": 131,
     "open_interest_sweep": 50,
-    "funding": 97,
+    "funding": 0,
     "open_interest": 81,
-    "liquidations": 50,
+    "liquidations": 49,
     "oi_coinalyze": 50,
     "ohlcv": 50
   },
@@ -18,8 +18,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-11-18 15:00:00+00:00",
-      "age_hours": 0.6572189413888889,
+      "max_ts": "2026-11-18 16:00:00+00:00",
+      "age_hours": 0.6554901861111111,
       "duplicate_rows": 68006
     },
     "open_interest": {
@@ -29,8 +29,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-11-18 15:00:00+00:00",
-      "age_hours": 0.6572189413888889,
+      "max_ts": "2026-11-18 16:00:00+00:00",
+      "age_hours": 0.6554901861111111,
       "duplicate_rows": 120485
     },
     "ohlcv": {
@@ -40,8 +40,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-11-18 14:00:00+00:00",
-      "age_hours": 1.6572189413888887,
+      "max_ts": "2026-11-18 15:00:00+00:00",
+      "age_hours": 1.655490186111111,
       "duplicate_rows": 5964
     },
     "liquidations": {
@@ -51,8 +51,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-11-18 14:00:00+00:00",
-      "age_hours": 1.6572189413888887,
+      "max_ts": "2026-11-18 15:00:00+00:00",
+      "age_hours": 1.655490186111111,
       "duplicate_rows": 86332
     },
     "options_dvol": {
@@ -63,7 +63,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-11-18 08:00:00+00:00",
-      "age_hours": 7.657218941388889,
+      "age_hours": 8.65549018611111,
       "duplicate_rows": 3648
     },
     "options_chain": {
@@ -74,7 +74,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-11-18 09:39:25.489858+00:00",
-      "age_hours": 6.000138425277777,
+      "age_hours": 6.99840967,
       "duplicate_rows": 8988
     }
   },
