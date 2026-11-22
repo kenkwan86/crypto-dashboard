@@ -1,6 +1,6 @@
 {
-  "observed_at": "2026-11-22T10:39:18.630199+00:00",
-  "elapsed_s": 374.9,
+  "observed_at": "2026-11-22T11:39:19.154250+00:00",
+  "elapsed_s": 375.3,
   "counts": {
     "funding_sweep": 34,
     "open_interest_sweep": 50,
@@ -18,8 +18,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-11-22 10:00:00+00:00",
-      "age_hours": 0.6548920116666667,
+      "max_ts": "2026-11-22 11:00:00+00:00",
+      "age_hours": 0.6550303616666666,
       "duplicate_rows": 71304
     },
     "open_interest": {
@@ -29,8 +29,8 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-11-22 10:00:00+00:00",
-      "age_hours": 0.6548920116666667,
+      "max_ts": "2026-11-22 11:00:00+00:00",
+      "age_hours": 0.6550303616666666,
       "duplicate_rows": 125071
     },
     "ohlcv": {
@@ -40,19 +40,19 @@
       "missing": 0,
       "unknown_time": 0,
       "status": "healthy",
-      "max_ts": "2026-11-22 09:00:00+00:00",
-      "age_hours": 1.6548920116666666,
+      "max_ts": "2026-11-22 10:00:00+00:00",
+      "age_hours": 1.6550303616666666,
       "duplicate_rows": 5964
     },
     "liquidations": {
       "expected": 50,
-      "healthy": 50,
-      "stale": 0,
+      "healthy": 49,
+      "stale": 1,
       "missing": 0,
       "unknown_time": 0,
-      "status": "healthy",
-      "max_ts": "2026-11-22 09:00:00+00:00",
-      "age_hours": 1.6548920116666666,
+      "status": "degraded",
+      "max_ts": "2026-11-22 10:00:00+00:00",
+      "age_hours": 1.6550303616666666,
       "duplicate_rows": 90782
     },
     "options_dvol": {
@@ -63,7 +63,7 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-11-22 04:00:00+00:00",
-      "age_hours": 6.654892011666666,
+      "age_hours": 7.655030361666667,
       "duplicate_rows": 3784
     },
     "options_chain": {
@@ -74,9 +74,9 @@
       "unknown_time": 0,
       "status": "healthy",
       "max_ts": "2026-11-22 06:00:10.014650+00:00",
-      "age_hours": 4.652110164444445,
+      "age_hours": 5.6522485144444445,
       "duplicate_rows": 8988
     }
   },
-  "status": "healthy"
+  "status": "degraded"
 }
